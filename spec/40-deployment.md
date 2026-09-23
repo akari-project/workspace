@@ -56,7 +56,7 @@
 ## 40.5 升级与备份
 
 - **DEP-09** Agent 自升级：
-  - Agent 二进制由发布流程用固定的 Ed25519 密钥签名，签名输入为 `"akari-agent-upgrade-v1" | version | sha256`（编码见 panel-spec `envelope.proto` 文件头），`AgentUpgrade` 带签名 `key_id`。容器镜像与 SBOM 另用 cosign 签名（spec/41 41.4）。Agent 内置“当前”与“下一把”两个公钥：换钥时，先随一个版本发布新公钥，至少过一个小版本后才启用新私钥签名。
+  - Agent 二进制由发布流程用固定的 Ed25519 密钥签名，签名输入为 `"akari-agent-upgrade-v1" | version | sha256`，其中 `sha256` 为制品的 32 字节摘要，作为字节串按 `|` 的规则加 4 字节长度前缀（编码见 panel-spec `envelope.proto` 文件头），`AgentUpgrade` 带签名 `key_id`。容器镜像与 SBOM 另用 cosign 签名（spec/41 41.4）。Agent 内置“当前”与“下一把”两个公钥：换钥时，先随一个版本发布新公钥，至少过一个小版本后才启用新私钥签名。
   - 灰度按 1% → 10% → 100% 推进。每档至少停留 30 分钟，满足以下条件后由管理员在后台确认晋级：该档节点在线率 ≥ 99%，且没有回退事件。
   - 新版本启动后 5 分钟内连不上控制面则自动回退。
   - 升级顺序固定为先控制面、后 Agent。控制面至少兼容前两个 Agent 小版本；Agent 比控制面新时，按 `HelloAck` 中的协议版本与控制面能力位运行，不使用控制面未声明的新能力（spec/20 NODE-16）。

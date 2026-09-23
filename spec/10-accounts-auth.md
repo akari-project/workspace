@@ -34,7 +34,9 @@
   - 为不透明随机值，服务端只存哈希，每次使用即轮换。
   - 客户端会话空闲 30 天失效，自首次登录起 90 天绝对失效。管理会话的有效期见 AUTH-21。
   - 已轮换的刷新令牌再次出现时，吊销整条会话链（`sessions.parent_id`）。例外：轮换后 10 秒内再次出现，且来源 IP 前缀与 User-Agent 相同时，返回与第一次相同的新令牌对，不判为泄露（多标签页或客户端重试）。
-- **AUTH-08** 浏览器中的访问令牌与刷新令牌分别放在 `__Host-access_token`、`__Host-refresh_token` 两个 HttpOnly、Secure、SameSite=Strict、Path=/ 的 Cookie 中，响应体不返回令牌；自研客户端把令牌存入系统安全存储。
+- **AUTH-08** 浏览器中的访问令牌与刷新令牌放在 HttpOnly、Secure、SameSite=Strict、Path=/ 的 Cookie 中，响应体不返回令牌；自研客户端把令牌存入系统安全存储。
+  - 用户中心使用 `__Host-access_token`、`__Host-refresh_token`；
+  - 管理后台使用独立的 `__Host-console_access_token`、`__Host-console_refresh_token`。两个应用可以部署在同一主机、只以路径前缀区分（spec/31 CON-01、spec/40 DEP-02），而 `__Host-` Cookie 必须为 Path=/，同名会互相覆盖。
 - **AUTH-09** 登录限流：
   - 同一账号 5 次失败后冷却 15 分钟；同一 IP 每分钟 20 次上限。二次验证失败同样计入账号失败次数。
   - 冷却对不存在的邮箱同样生效，并返回同样的 429 `rate_limited`。
