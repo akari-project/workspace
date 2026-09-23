@@ -1,0 +1,9 @@
+/panel-spec/
+/panel/
+/node-agent/
+/sing-box/
+/xray-core/
+/client/
+/go.work
+/go.work.sum
+.env*

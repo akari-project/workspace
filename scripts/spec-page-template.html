@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>开源 VPN 控制面板：技术规格</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f5f6f8; --surface: #ffffff; --ink: #16202c; --ink-2: #334150; --muted: #5d6877; --rule: #dde2e8; --rule-2: #eceff3;
+  --accent: #0b6e6e; --accent-tint: rgba(11,110,110,.08);
+  --fix: #9a5a06; --fix-tint: rgba(154,90,6,.09);
+  --new: #1e7a3c; --new-tint: rgba(30,122,60,.09);
+  --risk: #b42318; --risk-tint: rgba(180,35,24,.07);
+  --code-bg: #eef1f4;
+  --sans: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1418; --surface: #151c22; --ink: #e7ebef; --ink-2: #c3cbd3; --muted: #95a1ad; --rule: #28323b; --rule-2: #1e272f;
+    --accent: #5cc6c4; --accent-tint: rgba(92,198,196,.10);
+    --fix: #f0b35a; --fix-tint: rgba(240,179,90,.10);
+    --new: #6fd08f; --new-tint: rgba(111,208,143,.10);
+    --risk: #ff8a7d; --risk-tint: rgba(255,138,125,.09);
+    --code-bg: #1b242c;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1418; --surface: #151c22; --ink: #e7ebef; --ink-2: #c3cbd3; --muted: #95a1ad; --rule: #28323b; --rule-2: #1e272f;
+  --accent: #5cc6c4; --accent-tint: rgba(92,198,196,.10);
+  --fix: #f0b35a; --fix-tint: rgba(240,179,90,.10);
+  --new: #6fd08f; --new-tint: rgba(111,208,143,.10);
+  --risk: #ff8a7d; --risk-tint: rgba(255,138,125,.09);
+  --code-bg: #1b242c;
+}
+html { scroll-padding-top: calc(env(safe-area-inset-top, 0px) + 16px); scroll-behavior: smooth; background: var(--bg); }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink-2); font-family: var(--sans); font-size: 16px; line-height: 1.85; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+.layout { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 56px; max-width: 1200px; margin: 0 auto; padding: 40px 28px 96px; }
+@media (max-width: 980px) { .layout { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 24px 18px 72px; } }
+
+/* TOC */
+.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 28px); align-self: start; max-height: calc(100vh - 56px); overflow-y: auto; font-size: .88rem; }
+.toc summary { display: none; }
+.toc ol { list-style: none; border-left: 1px solid var(--rule); }
+.toc li a { display: flex; gap: 10px; padding: 5px 0 5px 14px; margin-left: -1px; border-left: 2px solid transparent; color: var(--muted); text-decoration: none; line-height: 1.5; }
+.toc li a span { font-family: var(--mono); font-size: .78rem; color: var(--muted); opacity: .7; padding-top: 2px; min-width: 1.4em; }
+.toc li a:hover { color: var(--ink); }
+.toc li a.on { color: var(--ink); border-left-color: var(--accent); font-weight: 500; }
+.toc li a.on span { color: var(--accent); opacity: 1; }
+.toc-title { font-weight: 700; color: var(--ink); margin-bottom: 10px; font-size: .9rem; }
+@media (max-width: 980px) {
+  .toc { position: static; max-height: none; margin-bottom: 28px; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 4px 14px; }
+  .toc summary { display: block; cursor: pointer; padding: 10px 0; font-weight: 700; color: var(--ink); }
+  .toc .toc-title { display: none; }
+  .toc ol { margin-bottom: 12px; }
+}
+
+/* Title block */
+.doc-head { max-width: 50rem; padding-bottom: 36px; margin-bottom: 44px; border-bottom: 1px solid var(--rule); }
+.doc-meta { font-size: .85rem; color: var(--muted); margin-bottom: 14px; }
+.doc-head h1 { font-size: clamp(1.9rem, 4.4vw, 2.9rem); font-weight: 900; line-height: 1.22; letter-spacing: -.01em; color: var(--ink); margin-bottom: 16px; }
+.doc-head .sub { font-size: 1.08rem; color: var(--ink-2); max-width: 42rem; }
+.glance { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; margin-top: 28px; }
+.glance div { background: var(--surface); padding: 14px 16px; font-size: .9rem; line-height: 1.6; }
+@media (max-width: 560px) { .glance { grid-template-columns: minmax(0, 1fr); } }
+.glance b { display: block; color: var(--ink); font-size: .95rem; margin-bottom: 2px; }
+.legend { margin-top: 18px; font-size: .85rem; color: var(--muted); }
+
+/* Sections */
+main { min-width: 0; }
+section { margin-bottom: 72px; }
+.sec-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 14px; }
+.sec-num { font-family: var(--mono); font-size: 1.05rem; font-weight: 600; color: var(--accent); flex-shrink: 0; }
+h2 { font-size: clamp(1.4rem, 2.8vw, 1.8rem); font-weight: 900; color: var(--ink); line-height: 1.35; }
+h3 { font-size: 1.12rem; font-weight: 700; color: var(--ink); margin: 36px 0 10px; line-height: 1.5; }
+.lede { font-size: 1.04rem; color: var(--ink-2); max-width: 46rem; margin-bottom: 8px; }
+.prose { max-width: 46rem; }
+.prose p { margin: 10px 0; }
+.prose ul { margin: 10px 0 10px 1.2em; }
+.prose ul li { margin: 6px 0; padding-left: 4px; }
+.prose ul li::marker { color: var(--accent); }
+strong, b { color: var(--ink); font-weight: 700; }
+code { font-family: var(--mono); font-size: .84em; background: var(--code-bg); border-radius: 4px; padding: 1px 5px; overflow-wrap: anywhere; color: var(--ink); }
+pre { font-family: var(--mono); font-size: .8rem; line-height: 1.65; background: var(--code-bg); border-radius: 8px; padding: 16px 18px; overflow-x: auto; margin: 14px 0; color: var(--ink); max-width: 52rem; }
+pre code { background: none; padding: 0; font-size: inherit; }
+
+/* Steps: genuine sequences only */
+ol.steps { list-style: none; counter-reset: s; max-width: 46rem; margin: 14px 0; }
+ol.steps > li { counter-increment: s; position: relative; padding: 0 0 18px 42px; }
+ol.steps > li::before { content: counter(s); position: absolute; left: 0; top: 2px; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--accent); color: var(--accent); font-family: var(--mono); font-size: .8rem; font-weight: 600; display: grid; place-items: center; background: var(--surface); }
+ol.steps > li::after { content: ""; position: absolute; left: 13px; top: 30px; bottom: 2px; width: 1px; background: var(--rule); }
+ol.steps > li:last-child::after { display: none; }
+ol.steps > li > b { display: block; margin-bottom: 2px; }
+
+/* Callouts */
+.callout { max-width: 46rem; border-left: 3px solid var(--accent); background: var(--accent-tint); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; font-size: .95rem; }
+.callout.fix { border-color: var(--fix); background: var(--fix-tint); }
+.callout.new { border-color: var(--new); background: var(--new-tint); }
+.callout.risk { border-color: var(--risk); background: var(--risk-tint); }
+.callout > b:first-child { margin-right: 4px; }
+
+/* Inline markers */
+.m { display: inline-block; font-size: .72rem; font-weight: 700; line-height: 1.5; padding: 0 6px; border-radius: 4px; margin: 0 4px; vertical-align: 2px; white-space: nowrap; }
+.m.fix { color: var(--fix); background: var(--fix-tint); }
+.m.new { color: var(--new); background: var(--new-tint); }
+
+/* Tables */
+.scroll { overflow-x: auto; margin: 16px 0 8px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); max-width: 64rem; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; line-height: 1.7; min-width: 620px; }
+th, td { text-align: left; vertical-align: top; padding: 11px 14px; border-bottom: 1px solid var(--rule-2); }
+th { font-weight: 700; color: var(--ink); background: var(--bg); font-size: .85rem; border-bottom: 1px solid var(--rule); }
+tr:last-child td { border-bottom: none; }
+td:first-child { color: var(--ink); }
+
+/* Diagrams */
+.figure { max-width: 64rem; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px; margin: 18px 0 8px; overflow-x: auto; }
+.figure pre.mermaid { background: none; margin: 0; padding: 0; max-width: none; text-align: center; }
+.caption { font-size: .84rem; color: var(--muted); margin-top: 6px; max-width: 46rem; }
+
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px 36px; max-width: 64rem; }
+.two > div > h3:first-child { margin-top: 20px; }
+footer { border-top: 1px solid var(--rule); padding-top: 20px; font-size: .85rem; color: var(--muted); max-width: 46rem; }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="目录">
+  <details id="tocd" open>
+  <summary>目录</summary>
+  <div class="toc-title">目录</div>
+  <ol>
+{{TOC}}
+  </ol>
+  </details>
+</nav>
+
+<main>
+<header class="doc-head">
+  <p class="doc-meta">由 workspace/spec 自动生成，{{DATE}}</p>
+  <h1>开源 VPN 控制面板<br>技术规格</h1>
+  <p class="sub">可自托管的代理服务管理系统。控制面 panel 内嵌用户中心与管理后台，负责账号、套餐、计费、支付宝收款与节点编排；节点 node-agent fork 自 Xboard-Node，内嵌 sing-box 与 Xray；协议与接口定义在 panel-spec。</p>
+  <div class="glance">
+    <div><b>规格即依据</b>每个文件写明适用范围，约束带编号（如 BIL-07），代码、任务、测试都引用编号。</div>
+    <div><b>控制面优先</b>M1 控制面与两个前端，M2 节点编排（模拟 Agent），M3 改造 Agent 并发布 v0.1。</div>
+    <div><b>计费准确</b>价格锁定、无宽限期、幂等入账、配额租约、支付宝通知先验签后入账。</div>
+    <div><b>为 Claude Code 组织</b>分层 CLAUDE.md、代理与 Skills、Hooks、工作流提示词随仓库提交。</div>
+  </div>
+</header>
+{{BODY}}
+<footer>本页面由 <code>workspace/scripts/build-spec-page.py</code> 从 <code>workspace/spec/*.md</code> 生成。开发以 Markdown 规格为准。</footer>
+</main>
+</div>
+
+<script>
+(function () {
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  var map = {};
+  links.forEach(function (a) { map[a.getAttribute('href').slice(1)] = a; });
+  var det = document.getElementById('tocd');
+  var mq = window.matchMedia('(max-width: 980px)');
+  function syncDetails() { if (mq.matches) det.removeAttribute('open'); else det.setAttribute('open', ''); }
+  syncDetails();
+  if (mq.addEventListener) mq.addEventListener('change', syncDetails);
+  links.forEach(function (a) { a.addEventListener('click', function () { if (mq.matches) det.removeAttribute('open'); }); });
+  if (!('IntersectionObserver' in window)) return;
+  var current = null;
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) {
+        if (current) current.classList.remove('on');
+        current = map[e.target.id];
+        if (current) current.classList.add('on');
+      }
+    });
+  }, { rootMargin: '-15% 0px -75% 0px' });
+  document.querySelectorAll('main section').forEach(function (s) { io.observe(s); });
+})();
+</script>
+</body>
+</html>

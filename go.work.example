@@ -1,0 +1,13 @@
+// 在 panel-spec 与 panel/server 建立 go.mod（M0-03、M0-05）之后再复制为 go.work 使用。
+go 1.26
+
+use (
+	./panel-spec
+	./panel/server
+	./node-agent
+)
+
+// 修改内核补丁时取消注释，免发布直接联调：
+// 模块路径以 node-agent/go.mod 中的 replace 左侧为准：
+// replace github.com/sagernet/sing-box => ./sing-box   // 模块路径与 node-agent/go.mod 一致
+// replace github.com/xtls/xray-core => ./xray-core

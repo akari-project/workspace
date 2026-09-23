@@ -1,0 +1,19 @@
+# 本地开发依赖。生产部署文件在 panel/deploy/。
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: panel
+      POSTGRES_PASSWORD: panel
+      POSTGRES_DB: panel
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql]
+  valkey:
+    image: valkey/valkey:9
+    command: ["valkey-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    ports: ["6379:6379"]
+  mailpit:
+    image: axllent/mailpit
+    ports: ["8025:8025", "1025:1025"]
+volumes:
+  pgdata: {}
