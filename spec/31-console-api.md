@@ -4,7 +4,8 @@
 
 - **CON-01** 位于独立域名（例如 `console.运营者域名`）或配置的路径前缀；命名、分页、错误遵守 spec/02 与 spec/30 API-01。只接受受众为 `console` 的令牌（spec/10 AUTH-21）。
 - **CON-02** 每个操作以 `x-permission` 声明所需权限，取值只能来自 spec/10 AUTH-17 的权限目录，由 CI 校验。每个操作至少有一个响应示例，供 Mock 服务使用。
-- **CON-03** 所有写操作都写审计日志。spec/10 AUTH-19 列出的敏感操作，要求请求体包含 `reason`、请求头带 `Mfa-Assertion`，并在界面上二次确认。
+- **CON-03** 所有写操作都写审计日志。spec/10 AUTH-19 列出的敏感操作，要求带原因、请求头带 `Mfa-Assertion`，并在界面上二次确认。原因放在请求体的 `reason` 中；DELETE 请求没有请求体，改用请求头 `Audit-Reason`（UTF-8 百分号编码，最长 500 字符）。缺少原因返回 400，缺少 `Mfa-Assertion` 返回 401 `mfa_required`。
+- **CON-08** 权限目录之外的读操作按以下对应：看板 `/v1/metrics/overview` 用 `orders.read`；内核矩阵 `/v1/kernels` 用 `hosts.*`；返利列表用 `accounts.read`，返利审核用 `credits.adjust`。
 - **CON-04** 对外把节点称为 `hosts`，与客户端接口面向用户的 `locations` 区分。
 - **CON-05** 下表按资源族列出路径。凡是集合资源，都隐含 `GET` 集合、`POST` 创建，以及 `/{id}` 的 `GET`、`PATCH`、`DELETE`，除非标注为只读。以下集合只提供有意义的操作：会话与设备（查看、吊销）、接入令牌（签发）、订单（查看，以及退款与手动标记支付子资源）、权益（查看；修改只经 `entitlement-adjustments`，spec/11 BIL-03）、应用记录、管理员（只能经邀请加入）、邀请、返利。可修改的单个资源遵守 CONV-13 与 CONV-28（ETag 与 `If-Match`）。
 
