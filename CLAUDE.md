@@ -44,7 +44,7 @@
 - 多代理：默认单会话 + 子代理；跨仓或前后端同时推进用 Agent Teams；大范围并行或对抗验证用 `workflows/` 中的 Dynamic Workflow（spec/43）。单个 bug 不组队。
 
 ## 完成的定义
-1. 相关仓库 `make test`（含 `-race`）与前端检查通过；涉及协议时 `buf breaking` 通过。
+1. 相关仓库 `make ci` 通过（与 spec/42 42.2 该仓库的检查一一对应，含 `-race` 单元与集成测试、性质测试、端到端测试、静态检查、前端检查）；涉及 proto 时 `buf breaking` 通过，涉及 OpenAPI 时 Redocly lint 与 oasdiff 通过。
 2. backlog 中该任务的验收标准逐条满足，每条对应自动化测试或记录的手动验收。
 3. 涉及的规则编号全部满足。
 4. 没有新增对外禁用词、没有日志输出令牌或凭据（CONV-24）、新文件带 SPDX 头（CONV-25）。
