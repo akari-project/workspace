@@ -62,6 +62,9 @@
 | HTTPUpgrade | 稳定 | 稳定 |
 | XHTTP | 不支持 | 稳定 |
 | mKCP | 不支持 | 稳定 |
+| QUIC（Hysteria2、TUIC 自带） | 稳定 | 实验（仅 Hysteria2） |
+
+- **AGT-14** 入站 `settings` 必须包含 `transport`，值与 proto 的 `Inbound.transport` 一致；数据库校验以 `settings->>'transport'` 为准。Reality 只用于 VLESS（TCP、gRPC、XHTTP）与 AnyTLS（TCP）。具体的“协议 + 传输”组合见 `panel-spec/schemas/inbound/README.md`；组合范围与 mKCP 等字段在 M0-04 审计时确认，有变化时同步修改 schema 与本节。
 
 基线随内核升级，通过新迁移更新；传输基线在 M0-04 审计后确认。XHTTP 与 mKCP 只有 Xray 提供，是选择 Xray 内核的主要理由。
 

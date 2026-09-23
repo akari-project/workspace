@@ -103,6 +103,23 @@ sequenceDiagram
   - 剩余时长降为 0 时权益 `ended`；
   - 优惠券次数不归还。
 - **ORD-11** 余额由 `credit_ledger` 的只追加流水求和；下单时按 ORD-15 抵扣；管理员调整必须填写原因并写审计。
+- **ORD-16** 余额流水的原因（`credit_ledger.reason`）：
+
+| 原因 | 方向 | 触发 |
+|---|---|---|
+| `order_payment` | 负 | 下单时冻结余额抵扣（ORD-15） |
+| `order_payment_release` | 正 | 订单取消、过期或转入余额时退回冻结金额（ORD-15） |
+| `stale_quote` | 正 | 开通时报价失效，实付转入余额（ORD-05） |
+| `quote_adjustment` | 正 | 开通时重算应付更低，差额退回（ORD-05） |
+| `late_payment` | 正 | 迟到付款转入余额（ORD-07） |
+| `upgrade_surplus` | 正 | 升级时剩余价值超出新价格的部分（spec/11 11.4） |
+| `scheduled_cancelled` | 正 | 取消下一段，实付退回（spec/11 BIL-10） |
+| `refund` | 正 | 退款退回余额（ORD-09） |
+| `redeem` | 正 | 兑换码充值（ORD-14） |
+| `referral` | 正或负 | 返利转入，或退款追回（spec/13 OPS-06） |
+| `admin_adjust` | 正或负 | 管理员调整，必须填写原因（ORD-11） |
+| `account_deletion` | 负 | 注销时余额作废（spec/10 AUTH-05） |
+
 - **ORD-12** 手动标记支付只允许 `superadmin`，任何角色都不能被授予（spec/10 AUTH-22）；需要重新验证、二次确认与原因（AUTH-19）。
 
 ## 12.4 测试渠道

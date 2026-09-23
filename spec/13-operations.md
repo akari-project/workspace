@@ -20,7 +20,7 @@
 | 提醒类 | 流量达到 80% 与 100% |
 | 营销类 | 公告推送 |
 
-- **OPS-05** 用户的通知偏好保存在 `notification_preferences(account_id, category, channel, is_enabled)` 中，通过 `GET`、`PUT /v1/me/notification-preferences` 读写。安全类与交易类不可关闭。
+- **OPS-05** 用户的通知偏好保存在 `notification_preferences(account_id, category, channel, is_enabled)` 中，`channel` 取值为 `email`、`telegram`（Webhook 是运营者级渠道，不属于用户偏好），通过 `GET`、`PUT /v1/me/notification-preferences` 读写。安全类与交易类不可关闭。
 - **OPS-09** 异常登录：本次登录来源的国家代码与 ASN，与该账号最近 30 天内所有成功登录都不相同。未配置 GeoIP 数据库时，只按“新增设备”通知。
 
 ## 13.2 公告（可关闭）

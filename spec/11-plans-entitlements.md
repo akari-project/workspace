@@ -151,7 +151,7 @@
 
 ## 11.8 加购项（M4）
 
-- **BIL-24** 加购项有两种：`traffic`（流量包）与 `devices`（额外设备名额）。
+- **BIL-24** 加购项有两种：流量包与额外设备名额。数据库中 `addons.kind` 为 `traffic`、`devices`；对外接口中为 `data`、`devices`（spec/30 API-01）。
   - 以只增不改的 `addon_prices` 表定价，规则同 BIL-01。
   - 报价请求用 `addon_price_id` 指定，场景为 `addon`。
   - 只有权益为 `active` 或 `over_quota` 时可以购买。

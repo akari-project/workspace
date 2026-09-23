@@ -24,10 +24,10 @@
 
 | 接口 | 说明 |
 |---|---|
-| `GET /v1/config` | 客户端启动配置：最低版本、公告版本、功能开关（`features`，spec/13 OPS-08）、备用域名；用 Ed25519 签名，带 `key_id`，公钥内置于客户端（CONV-30） |
+| `GET /v1/config` | 客户端启动配置：最低版本、公告版本、功能开关（`features`，spec/13 OPS-08）、备用域名；用 Ed25519 签名，签名对象为 `payload` 按 RFC 8785（JCS）规范化后的字节，带 `key_id`，公钥内置于客户端（CONV-30） |
 | `GET /v1/releases/latest?platform=` | 新版本信息与安装包签名 |
 | `GET /v1/assets/{digest}` | 按内容寻址的规则集等公共资源，可以由 CDN 缓存 |
-| `GET /v1/plans` | 在售套餐与价格 |
+| `GET /v1/plans` | 在售套餐与价格，以及加购项价格 |
 | `GET /v1/locations` | 可用地区、负载提示、倍率（`usage_multiplier`） |
 
 **注册、登录与会话**
@@ -38,6 +38,7 @@
 | `POST /v1/accounts/verification`、`POST /v1/accounts/verification/resend` | 邮箱验证、重新发送验证码（AUTH-03） |
 | `POST /v1/password-resets`、`POST /v1/password-resets/confirmation` | 发起与确认找回密码（AUTH-04） |
 | `POST /v1/sessions` | 登录并注册设备；需要二次验证时返回 `mfa_required`，第二步提交 `challenge_id`（AUTH-20） |
+| `POST /v1/sessions/nonces` | 取得一次性 nonce，供设备复用时签名（AUTH-10） |
 | `DELETE /v1/sessions/current` | 登出，并吊销本设备及其凭据（AUTH-10） |
 | `POST /v1/oauth/token` | 刷新令牌轮换；设备授权与扫码登录的轮询（AUTH-24） |
 | `POST /v1/oauth/device_authorization` | 电视、路由器等设备取得授权码 |
@@ -81,7 +82,7 @@
 | 接口 | 说明 |
 |---|---|
 | `GET /v1/announcements`、`GET /v1/articles`、`GET /v1/articles/{slug}` | 公告、帮助文档（公开；含用户变量的渲染见 spec/13 OPS-12） |
-| `GET /v1/support/tickets`、`POST /v1/support/tickets`、`GET /v1/support/tickets/{id}`、`POST /v1/support/tickets/{id}/messages`、`POST /v1/support/attachments` | 工单列表（分页）、创建、详情与消息、回复、上传附件 |
+| `GET /v1/support/tickets`、`POST /v1/support/tickets`、`GET /v1/support/tickets/{id}`、`POST /v1/support/tickets/{id}/messages`、`POST /v1/support/attachments`、`GET /v1/support/attachments/{id}` | 工单列表（分页）、创建、详情与消息、回复、上传与下载附件 |
 | `GET /v1/me/referrals` | 邀请返利 |
 | `POST /v1/diagnostics` | 用户主动提交的诊断日志（默认关闭） |
 
