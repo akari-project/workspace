@@ -76,22 +76,22 @@ sequenceDiagram
    - 附加数据为方向字节（Agent → 控制面为 `0x01`，控制面 → Agent 为 `0x02`）‖ `seq`（8 字节大端）。
    - nonce 不得由 `seq` 派生，以免重传时用同一 nonce 加密不同的明文。
 5. 握手 5 秒内未完成即关闭连接。长轮询按请求计时。
-- **NODE-22** 握手失败时，网关先发送 `Frame.hello_reject{reason, retry_after_ms}`，再关闭连接；WebSocket 同时使用对应的关闭码。Agent 按原因处理：
+- **NODE-22** 握手失败时，网关先发送 `Frame.hello_reject{reason, retry_after_ms}`，再关闭连接；WebSocket 同时使用对应的关闭码。`hello_reject` 在握手认证之前发送，不带 MAC，完整性只依赖 TLS，因此任何原因都不会让 Agent 永久停止重连。Agent 按原因处理：
 
 | `reason` | 关闭码 | Agent 行为 |
 |---|---|---|
 | `clock_skew` | 4001 | 记录日志，按 NODE-07 退避重试；`agentctl doctor` 提示检查时钟 |
 | `auth_failed` | 4002 | 指数退避，上限 1 小时 |
 | `replay` | 4003 | 生成新的 nonce 后立即重试 |
-| `version_unsupported` | 4004 | 停止重连，记录日志，等待升级 |
+| `version_unsupported` | 4004 | 记录日志，改为每小时重试一次，升级后立即重试 |
 | `busy` | 4005 | 按 `retry_after_ms` 等待后重试 |
-| `revoked` | 4006 | 停止重连，提示需要重新接入 |
-| `superseded` | 4007 | 同一节点有更新的会话（NODE-21）。本进程另有更新的会话时，只关闭这条旧连接；否则停止重连，记录日志，并提示可能有重复运行的 Agent |
+| `revoked` | 4006 | 提示需要重新接入，改为每小时重试一次 |
+| `superseded` | 4007 | 同一节点有更新的会话（NODE-21）。本进程另有更新的会话时，只关闭这条旧连接；否则记录日志，提示可能有重复运行的 Agent，并改为每小时重试一次 |
 
 ## 20.4 可靠投递
 
 - **NODE-12** 序号与确认：
-  - `Frame.seq` 在一次握手的会话内，每个方向从 1 开始递增。`Envelope.ack` 捎带已收到对端的最大连续序号。
+  - 握手帧（`hello`、`hello_ack`、`hello_reject`）的 `seq` 为 0。之后在一次握手的会话内，每个方向从 1 开始递增。`Envelope.ack` 捎带已收到对端的最大连续序号。
   - 会话内出现重复或不递增的 `seq` 时，关闭连接。WebSocket 基于有序可靠的 TCP，同一连接内不做超时重传。
   - 重连后，发送方把未确认的信封以新会话的 `seq` 重发，`idem_key` 保持原值。
 - **NODE-13** 投递语义为“至少一次 + 幂等”：
@@ -130,7 +130,7 @@ sequenceDiagram
   - 控制面至少保留每个节点最近 24 小时或最近 10,000 个版本的凭据变更。
   - 全量快照带 SHA-256 校验和，覆盖快照的原始字节（20.3 第 1 步）。Agent 校验后原子替换本地快照。
 - **NODE-24** 凭据经任何途径从节点移除，包括 `CredRemove`、`SyncDelta.removals`、全量快照中不再出现、`Credential.expires_at_ms` 到期，Agent 都必须在 1 秒内关闭其全部连接（spec/21 AGT-12）。协议中没有“移除但不关闭”的选项。
-- **NODE-25** DNS 服务商凭据以 `K_dns = HKDF-SHA256(ikm = PSK, info = "akari-dns-secret-v1", L = 32)` 做 AEAD 加密后下发；Agent 只在内存中解密。PSK 轮换后，控制面用新 PSK 重新加密并下发。
+- **NODE-25** DNS 服务商凭据以 `K_dns = HKDF-SHA256(ikm = PSK, salt = 空, info = "akari-dns-secret-v1", L = 32)` 做 XChaCha20-Poly1305 加密后下发，附加数据为空；PSK 取当前会话通过验证的那一把。Agent 只在内存中解密。PSK 变化后，控制面用新 PSK 重新加密并下发。
 - **NODE-16** 新能力通过 `Capabilities` 字段声明，控制面只向声明了该能力的节点发送对应消息。反方向同理：`HelloAck` 带控制面能力位，Agent 只向声明了该能力的控制面发送新增的上报消息。
 - **NODE-17** 协议变更遵循 spec/42 的兼容规则：字段只增不改，删除的编号写入 `reserved`。
 

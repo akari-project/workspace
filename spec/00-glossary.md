@@ -26,7 +26,7 @@
 | 订单 | 一次购买 | `orders` | `orders` | `orders` | — |
 | 余额 | 账户内的预存金额，由流水求和 | `credit_ledger` | `me/credits` | `accounts/{id}/credits` | — |
 | 流量周期 | 流量额度的计算区间；一段权益可以包含多个周期 | `entitlements.cycle_*`、`usage_cycles` | `usage` | — | — |
-| 流量包 | 额外流量的加购项 | `addons` | `addons` | — | — |
+| 加购项 | 流量包或额外设备名额（spec/11 11.8） | `addons`，`kind` 为 `traffic` 或 `devices` | `addons`，`kind` 为 `data` 或 `devices` | `addon-prices` | — |
 | 线路组 | 节点集合，权限的最小单位 | `location_groups` | — | `location-groups` | — |
 | 节点 | 运行 Agent 的一个服务实例 | `nodes` | `locations`（面向用户的地区） | `hosts` | `node_id` |
 | 机器 | 承载多个节点的一台服务器（机器模式，M5） | `machines` | — | — | — |

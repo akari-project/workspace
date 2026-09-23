@@ -45,12 +45,12 @@
   - 控制面发放 `clamp(剩余额度 ÷ 活跃节点数, 1 MiB, 256 MiB)`，记为未结算，默认有效期 10 分钟。
     - 剩余额度 = 周期额度 + 流量包剩余量 − 已入账用量 − 该账号在其他节点上的未结算租约之和。
     - 活跃节点数 = 该账号 5 分钟内持有租约或有流量报告的节点数，至少为 1。
-  - 在同一节点上，新租约替换旧租约：`LeaseRequest` 携带 `current_lease_id` 与旧租约的剩余字节，控制面据此结算旧租约。`LeaseRequest` 以 `(account_id, current_lease_id)` 幂等。
+  - 在同一节点上，新租约替换旧租约：`LeaseRequest` 携带 `current_lease_id` 与旧租约的剩余字节，控制面据此结算旧租约。`LeaseRequest` 以 `(account_id, current_lease_id, is_release)` 幂等。
   - 在租约获批之前，首个连接可以先放行，最多使用 1 MiB；5 秒内未获批即关闭该连接。
   - 节点收到全量同步（spec/20 NODE-14）后，为仍有连接的账号重新申请租约。
 - **ACC-09** 执行：节点在计数的同时扣减租约余额；余额低于 20% 时异步续租；耗尽且续租未获批时，立即关闭该账号的全部连接，并拒绝新连接，不等待控制面。
 - **ACC-10** 结算：
-  - 账号在该节点的最后一条连接关闭时，节点发送带释放标志的 `LeaseRequest`，报告剩余字节，控制面结算并释放。
+  - 账号在该节点的最后一条连接关闭时，节点发送带释放标志的 `LeaseRequest`，引用该节点上最新的 `lease_id` 并报告剩余字节；控制面结算并释放，回复 `QuotaLease{bytes = 0}`。只在控制面声明 `supports_lease_release` 时发送，否则等租约过期。
   - 租约过期未续的，过期时释放。
   - 实际用量以流量报告为准。
 - **ACC-11** 最大超额：
@@ -74,7 +74,7 @@
     - 控制面在 `Credential.max_sources` 中下发上限（0 表示不限）；
     - 声明了能力位 `supports_source_limit` 的节点，还会收到全局活跃来源集合 `SourceSet{credential_id, prefixes, version}`，汇总延迟不超过 35 秒。
     - 节点在本地活跃来源与全局集合的并集达到上限时，拒绝新来源的新连接，已有连接不受影响。
-  - 策略由设置项 `shared_credential_source_limit` 决定，取值为 `enforce`、`warn`、`off`，默认 `enforce`。
+  - 策略由设置项 `shared_credential_source_limit` 决定，取值为 `enforce`、`warn`、`off`，默认 `enforce`。没有声明 `supports_source_limit` 的节点无法执行限制，按 `warn` 处理，后台节点页显示提示。
 
 ## 22.5 分区与保留
 

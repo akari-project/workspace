@@ -22,7 +22,7 @@
 - **AGT-05** 本地状态：
   - 只持久化以下内容，全部放在同一目录下：控制面地址、节点密钥、最后快照、WAL、租约状态、`report_seq` 计数器、信封去重记录。运行配置全部来自控制面。
   - 状态文件权限为 0600，目录为 0700。
-  - 快照中的凭据值与 DNS 服务商凭据保持加密形态（spec/20 NODE-25），只在内存中解密。
+  - 快照需要保留原始字节以便校验（spec/20 NODE-15），因此快照文件整体用由 PSK 派生的密钥（`HKDF-SHA256(PSK, info = "akari-agent-state-v1")`）做 AEAD 加密；其中的凭据值、入站私钥与 DNS 服务商凭据只在内存中以明文存在。
   - 控制面不可达时，按最后一次快照继续服务，本地租约与凭据到期时间继续生效，新连接按 spec/22 ACC-19 处理。
 - **AGT-06** 不开放 HTTP 管理端口；指标只监听 127.0.0.1。
 
@@ -39,10 +39,10 @@
   - 目标内核必须出现在该节点最近上报的 `Capabilities.kernels` 中；
   - 协议与传输必须在该节点上报的能力内。
 
-  从未上报过能力的节点只做基线校验。首次握手后发现不符的入站，标记为不可用并告警。Agent 降级导致能力缩小时，同样处理受影响的入站。
+  从未上报过能力、或上报的能力中没有传输信息（旧版本 Agent）的节点，只做基线校验。首次握手后发现不符的入站，标记为不可用并告警。Agent 降级导致能力缩小时，同样处理受影响的入站。
 - **AGT-10** 实验协议只有在节点 `allow_experimental=true` 时才能启用。
 - **AGT-11** 在 Xray 内核节点上配置 Reality 入站时，后台显示警告：自研客户端（mihomo）不兼容 Xray-core v26.7.11 及以上的 Reality 服务端，建议使用 sing-box 内核。
-- **AGT-13** 入站 `settings` 的结构按“协议 + 传输”分别定义为 JSON Schema，放在 `panel-spec/schemas/inbound/` 中，由控制面在保存时校验，并随 proto 一起版本化（ARC-01）。
+- **AGT-13** 入站 `settings_json` 的结构按“协议 + 传输”分别定义为 JSON Schema。管理接口中入站的 `settings` 不含私钥，私钥放在只写的 `secrets` 中（CONV-19）；控制面按 schema 校验两者合并后的结果。Schema 放在 `panel-spec/schemas/inbound/` 中，由控制面在保存时校验，并随 proto 一起版本化（ARC-01）。
 
 | 协议 | sing-box | Xray-core |
 |---|---|---|
@@ -62,6 +62,9 @@
 | HTTPUpgrade | 稳定 | 稳定 |
 | XHTTP | 不支持 | 稳定 |
 | mKCP | 不支持 | 稳定 |
+| QUIC（Hysteria2、TUIC 自带） | 稳定 | 实验（仅 Hysteria2） |
+
+- **AGT-14** 入站 `settings` 必须包含 `transport`，值与 proto 的 `Inbound.transport` 一致；数据库校验以 `settings->>'transport'` 为准。Reality 只用于 VLESS（TCP、gRPC、XHTTP）与 AnyTLS（TCP）。具体的“协议 + 传输”组合见 `panel-spec/schemas/inbound/README.md`；组合范围与 mKCP 等字段在 M0-04 审计时确认，有变化时同步修改 schema 与本节。
 
 基线随内核升级，通过新迁移更新；传输基线在 M0-04 审计后确认。XHTTP 与 mKCP 只有 Xray 提供，是选择 Xray 内核的主要理由。
 
