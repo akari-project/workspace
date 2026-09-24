@@ -24,7 +24,7 @@
 
 | 接口 | 说明 |
 |---|---|
-| `GET /v1/config` | 客户端启动配置：最低版本、公告版本、功能开关（`features`，spec/13 OPS-08）、注册策略（可选字段 `registration_policy`，缺省时前端按 `open` 处理，以服务端校验为准；不下发域名名单）、备用域名；修改注册策略后重新生成签名与 ETag；用 Ed25519 签名，签名对象为 `payload` 按 RFC 8785（JCS）规范化后的字节，带 `key_id`，公钥内置于客户端（CONV-30） |
+| `GET /v1/config` | 客户端启动配置：最低版本、公告版本、功能开关（`features`，spec/13 OPS-08）、注册策略（可选字段 `registration_policy`，缺省时前端按 `open` 处理，以服务端校验为准；不下发域名名单）、接口地址（`api_endpoints`，见 API-10）；用 Ed25519 签名，签名对象为 `payload` 按 RFC 8785（JCS）规范化后的字节，带 `key_id`，公钥内置于客户端（CONV-30）；生成规则见 API-10 |
 | `GET /v1/releases/latest?platform=` | 新版本信息与安装包签名 |
 | `GET /v1/assets/{digest}` | 按内容寻址的规则集等公共资源，可以由 CDN 缓存 |
 | `GET /v1/plans` | 在售套餐与价格，以及加购项价格 |
@@ -89,6 +89,18 @@
 ## 30.3 规则
 
 - **API-03** 客户端版本通过标准 `User-Agent`（如 `AppName/1.4.0 (iOS 19.1)`）携带，不使用自定义请求头。只有匹配 `^<AppName>/\d+\.\d+\.\d+` 的请求才与 `/v1/config` 的 `min_version[platform]` 比较，版本过低返回 426 `upgrade_required`；浏览器与第三方客户端永不返回 426。
+  - `AppName` 来自部署配置 `client.app_name`，默认 `Akari`，必须是 RFC 9110 的 token，拼入正则时转义。不使用站点名称：站点名称可由运营者修改，UA 前缀由客户端固定。
+  - 平台取括号内第一个词，不区分大小写对应 `ClientPlatform`（`ios`、`android`、`windows`、`macos`、`linux`），另将 `iPadOS` 对应 `ios`；无法识别的平台、`min_version` 中没有的平台不比较。
+  - 只比较主、次、修订号，忽略预发布与构建后缀。
+  - 只有以下四个入口操作返回 426：`createSession`、`createSessionNonce`、`createDeviceLink`、`getMyConfiguration`。其余接口（包括 `GET /v1/config`、`GET /v1/releases/latest`、登出与 `/v1/oauth/*`）永不返回 426，旧客户端仍能取得最低版本与新安装包。
+- **API-10** `GET /v1/config` 的生成：
+  - `min_version`：settings 键 `min_version`（spec/03 3.6），默认 `{}`。不应高于该平台 `GET /v1/releases/latest` 已发布的版本；M1 只在后台界面提示，不做校验。
+  - `api_endpoints`：第一项为主地址，取部署配置 `ui.portal.api_base_url`，未配置时取用户中心的公开地址（`ui.portal.public_url` 去掉末尾的 `/`）；其后为部署配置 `client.api_endpoints` 中的备用地址（去重，保持顺序）；主地址也未配置时只下发备用地址。每一项的含义与 DEP-04 的 `api_base_url` 相同：接口根地址，不含 `/v1` 与末尾的 `/`，可以带路径前缀。备用地址不放在 settings 与管理接口中：修改它等于把全部客户端引到另一个域名，与更换域名、证书一样由部署者修改配置。
+  - `announcement_version`：单调不减的 int64，生效中的公告集合可能变化时必须增大。公告模块实现前恒为 0；推导方式由公告任务定义，不读取 `updated_at`（CONV-27）。
+  - `issued_at`：取 settings 键 `config_issued_at`。修改 `features`、`registration_policy`、`min_version` 时，在同一事务中用注入的时钟写入（CONV-04、CONV-27）；站点初始化时写入。公告模块实现后取它与公告版本对应时刻中的较大值。
+  - 签名：Ed25519 签名是确定性的，相同 payload 在各副本得到相同的签名文档。ETag 为签名文档 JCS 字节的 SHA-256（强 ETag，CONV-13），不需要共享缓存；进程内可以按输入缓存签名结果。签名私钥见 CONV-30 的 `PANEL_CONFIG_KEY`，`key_id` 以十进制字符串输出。
+  - 响应带 `Cache-Control: no-cache`，由 ETag 返回 304。
+  - 客户端只接受 `issued_at` 不早于上次已接受值的文档（防回滚），否则继续使用旧文档。
 - **API-04** 限流默认值（可配置），超限返回 429 并带 `Retry-After`：
 
 | 对象 | 默认值 |

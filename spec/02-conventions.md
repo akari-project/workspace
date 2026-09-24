@@ -131,6 +131,8 @@
   - 主密钥来自环境变量：当前密钥为 `PANEL_MASTER_KEY`，轮换期间的旧密钥为 `PANEL_MASTER_KEY_PREVIOUS`。格式都是 `"<key_id>:<base64>"`：`key_id` 为 1–255 的十进制整数，即密文的第一个字节；base64 为标准编码的 32 字节密钥。两把密钥的 `key_id` 必须不同，格式错误时拒绝启动。
   - `panel keys rotate` 分批用当前主密钥重新加密全部 `_enc` 值（包括 `settings` 中以 `_enc` 结尾的键），完成后旧密钥才可下线。
   - 签名私钥（PASETO 访问令牌、`/v1/config` 的 Ed25519 签名、Agent 发布签名）不入库，存放方式与主密钥相同。每个签名都带 key id，验证方同时接受当前与下一把公钥。
+    - 控制面的签名私钥来自环境变量，格式与主密钥相同（`"<key_id>:<base64>"`，32 字节为 Ed25519 种子）：访问令牌为 `PANEL_TOKEN_KEY`（换钥期间旧密钥为 `PANEL_TOKEN_KEY_PREVIOUS`），`/v1/config` 为 `PANEL_CONFIG_KEY`。api 角色缺少时拒绝启动；两把签名密钥的公钥必须不同（用途分离）。
+    - `PANEL_CONFIG_KEY` 没有 `_PREVIOUS`：客户端内置当前与下一把公钥，换钥时只能切换到已随已发布客户端内置的“下一把”，之后的客户端版本再内置新的“下一把”。
   - 主密钥与签名私钥的备份、恢复要求见 spec/40 DEP-10。
 - **CONV-20** 令牌、兑换码、验证码只存 SHA-256，列名以 `_hash` 结尾。
 

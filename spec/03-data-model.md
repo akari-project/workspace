@@ -108,4 +108,6 @@ erDiagram
 | `settings` 键 | `registration_policy` | `"open"`、`"invite_only"`、`"closed"`，默认 `"open"`（spec/10 AUTH-02）；管理接口字段同名 |
 | `settings` 键 | `email_domain_allowlist`、`email_domain_denylist` | 邮箱域名白名单与黑名单，JSON 字符串数组，默认空（AUTH-02）；管理接口字段同名 |
 | `settings` 键 | `smtp` | SMTP 投递设置（spec/13 OPS-01），JSON 对象 `{host, port, username, from_address, tls}`，字段与管理接口的 `settings.smtp` 同名。`tls` 取 `starttls`（缺省，要求 STARTTLS，服务器不支持即投递失败）、`implicit`（隐式 TLS，常用端口 465）、`none`（明文，只用于本机或可信内网中继，例如开发环境的 Mailpit）。保存时拒绝端口 465 与 `starttls` 的组合、`none` 与用户名的组合（`not_allowed`）。不提供跳过证书校验的选项 |
+| `settings` 键 | `min_version` | 客户端最低版本（spec/30 API-03、API-10），JSON 对象，键为 `ClientPlatform`（`ios`、`android`、`windows`、`macos`、`linux`），值为 `x.y.z`，默认 `{}`；管理接口字段同名，更新时可选；平台或版本格式错误返回 `invalid_format`（`errors[].field` 如 `min_version.ios`） |
+| `settings` 键 | `config_issued_at` | `/v1/config` 的 `issued_at`（spec/30 API-10），RFC 3339 字符串；修改 `features`、`registration_policy`、`min_version` 时在同一事务中用注入的时钟写入；不在管理接口中暴露 |
 | `settings` 键 | `smtp_password_enc` | SMTP 密码密文（CONV-19）；管理接口只返回 `smtp.has_password` |
