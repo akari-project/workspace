@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
 """把 workspace/spec/*.md 渲染为单页 HTML（需要 pandoc）。
 用法：python3 scripts/build-spec-page.py [输出路径，默认 spec.html]"""
 import datetime, os, re, shutil, subprocess, sys

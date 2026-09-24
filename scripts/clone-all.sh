@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # 用法：scripts/clone-all.sh <github-org>
 set -euo pipefail
 org="${1:?github org required}"

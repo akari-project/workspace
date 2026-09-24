@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # 首次在本地建立工作区（解压起步包后运行一次）：
 #   1. 为 workspace 与 panel-spec、panel、client 初始化独立的 git 仓库；
 #   2. 把 node-agent 种子文件合入 cedar2025/Xboard-Node 的克隆；

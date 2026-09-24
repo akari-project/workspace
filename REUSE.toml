@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# REUSE 登记（spec/02 CONV-25）。源文件在头部带 SPDX-License-Identifier（由 make check-spdx 检查）；
+# 下列无法或不宜加注释头的文件在此登记。
+version = 1
+
+# 版权声明对全部文件生效，与文件头中的许可证标识合并。
+[[annotations]]
+path = "**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "akari-project contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# 规格、ADR、backlog、评审记录与工作流文档；Claude Code 配置与 hook 脚本；
+# 复制到其他仓库的模板（许可证随目标仓库，不加本仓库的头）；JSON 与 HTML 模板。
+[[annotations]]
+path = [
+  "spec/**",
+  "adr/**",
+  "backlog/**",
+  "review/**",
+  "workflows/**",
+  "CLAUDE.md",
+  ".claude/**",
+  ".mcp.json",
+  "scripts/hooks/**",
+  "scripts/spec-page-template.html",
+  "templates/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "akari-project contributors"
+SPDX-License-Identifier = "Apache-2.0"

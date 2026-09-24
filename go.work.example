@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // 在 panel-spec 与 panel/server 建立 go.mod（M0-03、M0-05）之后再复制为 go.work 使用。
 go 1.26
 

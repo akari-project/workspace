@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+# workspace CI（spec/42 42.2）：make ci（SPDX 头；依赖许可证扫描目前为占位）与 REUSE lint。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: make ci
+
+  reuse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: fsfe/reuse-action@v5
