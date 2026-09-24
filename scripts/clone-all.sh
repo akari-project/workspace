@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # 用法：scripts/clone-all.sh <github-org>
 # 得到与 scripts/bootstrap.sh 相同的布局：
 #   - 各仓库的 origin 指向 <org>；node-agent 另有 upstream（cedar2025/Xboard-Node）；
