@@ -22,9 +22,47 @@ workspace/                  本仓库：规格、决策、任务、Claude Code �
 
 子仓库被本仓库的 `.gitignore` 忽略，各自独立提交与推送。
 
+## 开发者工具与版本
+
+每位开发者需要安装：
+
+| 工具 | 版本 | 用途 / 用在哪个仓库 | 版本来源 |
+|---|---|---|---|
+| Go | 1.26 以上；模块要求 `go 1.26.0`，工具链 `go1.27.1` | panel/server、panel-spec、node-agent；本机 1.26 以上即可，`GOTOOLCHAIN` 会自动下载 1.27.1 | panel/server/go.mod、panel-spec/go.mod 的 `go` 与 `toolchain` 行；`go.work.example` 写 `go 1.26` |
+| Node.js | 22 LTS | panel/web（portal、admin、ui、sdk） | spec/41 41.2；panel/web/package.json `engines.node >=22`；CI `node-version: 22` |
+| pnpm | 12.5.1 | panel/web；建议 `corepack enable`，按 `packageManager` 自动取用 | panel/web/package.json 的 `packageManager` |
+| buf | 1.73.0 | panel-spec：`buf lint`、`buf breaking`、代码生成 | panel-spec CI 中 `bufbuild/buf-action` 的 `version` |
+| Docker、Docker Compose v2 | 支持 `docker compose` 的版本 | `compose.dev.yaml`（postgres:18、valkey/valkey:9、axllent/mailpit）；panel 集成测试（testcontainers） | compose.dev.yaml |
+| jq | 任意 | Claude Code hooks（`scripts/hooks/*.sh`） | scripts/hooks |
+| git | 任意；已设置 `user.name` 与 `user.email` | 全部仓库；提交带 DCO 签名 | spec/42 42.6 |
+| Python 3 | 3.x；CI 用 3.13 | workspace `make ci` 中的 `scripts/check_spdx.py` | workspace CI |
+| Claude Code | 最新版 | 全部仓库；Agent Teams 由 `.claude/settings.json` 的 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` 开启 | spec/43 |
+
+可选：
+
+| 工具 | 用途 |
+|---|---|
+| goimports | post-edit hook 优先使用，缺少时退回 gofmt；`go install golang.org/x/tools/cmd/goimports@latest` |
+| reuse | 本地运行 REUSE lint（CI 用 `fsfe/reuse-action`） |
+| gopls、vtsls | LSP（spec/43 43.4），见下文“配置” |
+
+由 Makefile 固定、无需手动安装（经 `go run` / `npx` 按版本拉取）：
+
+- panel-spec：Redocly CLI 2.54.2、openapi-typescript 7.13.0、oasdiff v1.32.1、govulncheck v1.8.0、go-licenses v2.0.1；protoc-gen-go 由 `make tools` 安装，与 go.mod 中 `google.golang.org/protobuf` 同版本。
+- panel：sqlc v1.31.1、staticcheck v0.8.1、govulncheck v1.8.0、go-licenses v2.0.1。前端 Mock 用的 Prism 在 panel/web 的 devDependencies 中，随 `pnpm install` 安装。
+
+自检：
+
+```bash
+go version && node --version && pnpm --version && buf --version \
+  && docker compose version && jq --version && python3 --version
+```
+
+修改 Claude Code hooks 后，在 workspace 运行 `make test-hooks`（已包含在 `make ci` 中）。
+
 ## 快速开始
 
-需要：Claude Code、Go（最新稳定版）、Node.js 22+ 与 pnpm、buf、Docker、jq、git（已设置 user.name 与 user.email）。
+先按上一节安装工具。
 
 ```bash
 cd workspace
@@ -73,7 +111,7 @@ claude
   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO claude_ro;
   ```
 - Agent Teams 已在 `.claude/settings.json` 开启；子仓库内部关闭。
-- `go.work.example`：在 panel-spec 与 panel/server 建立 go.mod（M0-03、M0-05）之后再复制为 `go.work`。
+- `go.work.example`：panel-spec 与 panel/server 已有 go.mod（M0-03、M0-05），跨模块联调时复制为 `go.work`。
 
 ## 已验证
 
@@ -84,4 +122,4 @@ claude
 
 ## 未包含
 
-- Go 与前端业务代码（由 M0 起的任务生成）；管理接口 OpenAPI（M0-03）；PostgreSQL / Valkey 的 MCP 配置。
+- 业务代码（由 M1 起的任务生成）；PostgreSQL / Valkey 的 MCP 配置。
