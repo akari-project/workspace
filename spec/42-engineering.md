@@ -20,10 +20,10 @@
 
 | 仓库 | 检查 |
 |---|---|
-| 全部 | SPDX 头（REUSE lint，CONV-25）；依赖许可证扫描（按下方允许清单）；`govulncheck` 或 `pnpm audit` |
+| 全部 | SPDX 头（REUSE lint，CONV-25；两个内核 fork 只检查相对 `UPSTREAM_BASE` 新增的文件）；DCO（42.6）；依赖许可证扫描（按下方允许清单）；`govulncheck` 或 `pnpm audit` |
 | panel-spec | `buf lint`、`buf breaking`；两份 OpenAPI 的 Redocly lint 与 oasdiff；禁用词检查（spec/30 API-01）；`x-permission` 取值检查（spec/10 AUTH-17）；每个操作都有响应示例；生成代码无差异 |
 | panel | `make test`、`staticcheck`、性质测试、端到端测试（testcontainers）；前端 lint / typecheck / test / build；嵌入产物一致性（spec/40 DEP-01） |
-| node-agent | `make test`、协议一致性套件、内核一致性测试（只跑协议矩阵中“稳定”与“实验”的组合） |
+| node-agent | `make test`、协议一致性套件、内核一致性测试（只跑协议矩阵中“稳定”与“实验”的组合）；`govulncheck` 在 backlog M3-11 完成前不阻塞，完成后改为阻塞 |
 
 依赖许可证允许清单：
 
@@ -73,4 +73,7 @@
 ## 42.6 治理
 
 - `.github` 仓库提供 SECURITY.md（私密报告渠道、响应时限、支持版本）、CODE_OF_CONDUCT.md、PR 模板（DCO、验收标准清单）。
+- DCO（spec/01 ARC-03）从 M0-02 起强制：
+  - 每个仓库的 CI 按 PR 范围（`base..head`）检查每个提交都带 `Signed-off-by`，缺少时 CI 失败；
+  - M0-02 之前已合并的提交不补签，也不在检查范围内。
 - 重大决策写 ADR（`../adr/`）。README 说明项目用途，以及部署者需遵守所在地的法律法规。

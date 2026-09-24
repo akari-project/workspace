@@ -21,6 +21,7 @@
 - **AGT-02** Xboard-Node 上游文件没有逐文件的许可证声明，不补 SPDX 头，而是在 `REUSE.toml` 中按路径登记为 MPL-2.0（CONV-25），并附 `LICENSES/MPL-2.0.txt`；来源与版权写入 `NOTICE`。新文件为 GPL-3.0-or-later，带 SPDX 头；二进制整体按 GPL-3.0-or-later 分发。
 - **AGT-03** 每月挑选上游的内核、协议、证书修复合入；不再跟随上游通信层的改动。
 - **AGT-04** 内核 fork 复制到本组织，并锁定到 Xboard-Node 当前 `replace` 所指的提交；`replace` 改为指向本组织的副本。优先合入 Xboard-Node 作者的 fork 更新，落后过久时自行 rebase。
+  - 每次跟随上游（`core-upgrade`）后，同步更新该 fork 的 panel-ci workflow 中的 `UPSTREAM_BASE`，SPDX 检查只覆盖相对该基点新增的文件（CONV-25）；fork 中的上游文件不在 `REUSE.toml` 中登记。
 - **AGT-05** 本地状态：
   - 只持久化以下内容，全部放在同一目录下：控制面地址、节点密钥、最后快照、WAL、租约状态、`report_seq` 计数器、信封去重记录。运行配置全部来自控制面。
   - 状态文件权限为 0600，目录为 0700。

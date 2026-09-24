@@ -64,7 +64,7 @@
 | 发布 | GoReleaser、cosign（固定密钥签名，spec/40 DEP-09）、Syft 生成 SBOM |
 | 容器镜像仓库 | GHCR |
 | PostgreSQL 备份 | pgBackRest |
-| 许可证与 SPDX | REUSE（`REUSE.toml` 登记上游文件，spec/02 CONV-25） |
+| 许可证与 SPDX | REUSE（node-agent 的 `REUSE.toml` 登记来自 Xboard-Node 的上游文件；内核 fork 只检查相对 `UPSTREAM_BASE` 新增的文件，spec/02 CONV-25） |
 | OpenAPI 兼容检查 | oasdiff（spec/42 ENG-02） |
 
 ## 41.5 自研客户端（`client`，预留）
