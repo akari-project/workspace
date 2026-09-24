@@ -23,6 +23,21 @@
 - **DEP-02** 按 Host 或路径前缀（配置项）分别提供两个应用；未命中静态文件时回退到对应的 `index.html`。
 - **DEP-03** 带哈希的资源使用 `Cache-Control: public, max-age=31536000, immutable`，`index.html` 使用 `no-cache`；构建时预压缩 br 与 gzip。升级后，旧页面加载的分块可能已不存在，前端在分块加载失败时刷新 `index.html`（spec/32 UI-06）。
 - **DEP-04** 返回 `index.html` 时注入运行时配置：站点名称、接口地址、源代码链接、CSP nonce。
+  - 服务端在 `</head>` 之前插入带 nonce 的 `<script>window.__PANEL_CONFIG__={JSON}</script>`，JSON 中的 `<` 转义为 `\u003c`；同时为 `index.html` 中已有的 `<script>`、`<style>` 补上同一个 nonce。
+  - 字段：
+
+    | 字段 | 内容 |
+    |---|---|
+    | `app` | `portal` 或 `admin` |
+    | `site_name` | 站点名称 |
+    | `api_base_url` | 接口根地址，不含 `/v1` 与末尾的 `/`，服务端总是填写非空的绝对地址：配置了 `api_base_url` 时取配置值，否则取请求的源站加应用的挂载路径 |
+    | `source_url` | 页脚“源代码”链接（spec/01 ARC-04） |
+    | `source_revision` | 当前运行版本的 git 提交 |
+    | `csp_nonce` | 与 CSP 头中相同的 nonce，供组件库动态插入的 `<style>` 使用 |
+
+  - 深层路径（如 `/console/users/123`）回退到 `index.html` 时，服务端把属性值中以 `src="./`、`href="./` 开头的相对路径改写为应用的挂载路径；CSP 为 `base-uri 'none'`，不能用 `<base>` 代替。
+  - 按路径前缀提供时（DEP-02），管理后台默认挂载在 `/console/`，用户中心在 `/`。
+  - 每个应用的 `dist/build.json` 为 `{"commit": "<git 提交>"}`，即 DEP-01 用于比对的提交。
 - **DEP-05** 两个应用都返回以下安全头：
   - `Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{n}'; style-src 'self' 'nonce-{n}'; img-src 'self' data:; connect-src 'self' {接口地址}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`
   - `X-Frame-Options: DENY`

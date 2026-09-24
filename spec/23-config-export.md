@@ -33,3 +33,13 @@
 - **EXP-08** 适配器跳过目标格式或目标客户端不支持的入站，并在 golden 测试中覆盖：
   - `mihomo` 格式跳过 Xray-core v26.7.11 及以上内核上的 Reality 入站，以及 AnyTLS 与 Reality 组合的入站（spec/30 API-09）；
   - `base64` 格式跳过没有标准分享链接格式的协议或传输。
+- **EXP-09** 各协议凭据形式：导出配置中的用户凭据与节点上的值完全相同，按 `panel-spec` `proto/node/v1/messages.proto` 中 `Credential` 注释的规则由凭据的 `secret`（16 字节 UUIDv4）生成（spec/21 AGT-15）：
+  - uuid_text 为 `secret` 按 RFC 9562 的标准文本形式（32 个小写十六进制数字按 8-4-4-4-12 用连字符分隔，共 36 个字符）。
+  - VLESS、VMess 的用户 id 与 TUIC 的 uuid 填 uuid_text；VMess 的 alterId 为 0（AEAD）。
+  - Trojan、Hysteria2、AnyTLS、TUIC 的密码，以及 Shadowsocks 非 2022 方式的密码，为 uuid_text。
+  - Shadowsocks 2022 的用户密钥：
+    - `ss2022_key_16 = HKDF-SHA256(ikm = secret, salt = 空（等价于 32 个零字节）, info = "akari-ss2022-user-key-16-v1", L = 16)`，用于 `2022-blake3-aes-128-gcm`；
+    - `ss2022_key_32 = HKDF-SHA256(ikm = secret, salt = 空（等价于 32 个零字节）, info = "akari-ss2022-user-key-32-v1", L = 32)`，用于 `2022-blake3-aes-256-gcm`；
+    - 客户端的密码为 `settings.inbound_key`（原样，已是 base64）`+ ":" + base64(ss2022_key_16 或 ss2022_key_32)`（SIP022 多用户格式，标准 base64、带填充）；完整示例见向量 `credential.ss2022_client`。
+  - 生成结果必须与 `panel-spec` `testdata/node-v1-vectors.json` 的 `credential` 向量一致，由适配器的 golden 测试覆盖。
+  - mKCP 入站按 `settings.mkcp.finalmask` 写出与节点相同的 `finalmask`（`panel-spec` `testdata/mkcp-finalmask.json`）。

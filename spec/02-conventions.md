@@ -20,6 +20,8 @@
 - **CONV-06** 比例计算使用整数分子与分母，只在最后一步向下取整。
 - **CONV-07** 流量为字节数（`bigint` / `uint64`），接口字段以 `bytes_` 开头。
 - **CONV-08** 一个站点只有一种结算货币，初始化后不可更改。
+  - 保存在 `settings` 的键 `site_currency`，值为 ISO 4217 字母代码的 JSON 字符串（如 `"CNY"`）。
+  - 与 `site_timezone`（CONV-26）由同一个触发器 `settings_readonly` 保证：初始化写入后不得修改或删除。
 - **CONV-33** 流量与容量按 1024 进位，使用 IEC 二进制单位：1 KiB = 1024 B，1 MiB = 1024 KiB，1 GiB = 1024 MiB，1 TiB = 1024 GiB。
   - 界面显示、后台配置输入、文案、规格、接口描述与示例一律写 KiB、MiB、GiB、TiB，不用 KB、MB、GB、TB；例如套餐额度“每月 100 GiB”即 107374182400 字节。
   - 文件与请求体大小上限、内存与缓冲区大小同样使用 IEC 单位（如附件“5 MiB”即 5242880 字节），避免与十进制单位混淆。
@@ -109,6 +111,12 @@
   - 用按账号派生的密钥加密后存入 `_enc` 列，账号数据删除时销毁该账号的派生密钥，即“加密擦除”。
 
   支付宝通知原文在写入 `payment_notifications` 前，去除买家账号类字段（spec/12 PAY-06）。
+
+  操作原因等自由文本按第一种做法处理：
+  - 可变表 `reason_texts`（`id`、`account_id`（可空，原因所涉及的账号）、`body`、`created_at`、`updated_at`）保存原文；
+  - 只追加表只保存 `reason_id` 引用：`audit_logs.reason_id`（spec/10 AUTH-18）、`entitlement_events.reason_id`；
+  - `entitlement_events` 中 `type = 'admin_adjust'` 的行必须带 `reason_id`（CHECK，spec/11 11.6）；`credit_ledger` 不保存原因，余额调整的原因写在对应的 `audit_logs` 中；
+  - 删除账号个人数据时，把该账号的 `reason_texts.body` 清空为空串，保留行以维持引用。
 - **CONV-19** 敏感值用应用层 AEAD 加密，列名以 `_enc` 结尾。敏感值包括：节点密钥、TOTP 密钥、支付私钥、DNS 服务商凭据、代理凭据、导出令牌明文（CONV-20），以及入站配置中的私钥（Reality `private_key`、Shadowsocks 2022 服务端密钥）。入站私钥保存在 `inbounds.secrets_enc`，不写入 `inbounds.settings`；控制面生成节点快照时合并进 `settings_json`。
 
   加密要求不限于数据库列，同样适用于以下位置中出现的敏感值：
@@ -120,6 +128,7 @@
   加密主密钥来自环境变量或外部 KMS，不入库。
 - **CONV-30** 密文格式为 `key_id（1 字节）‖ nonce ‖ ciphertext`。
   - 运行时同时加载当前主密钥与至多一把旧主密钥。
+  - 主密钥来自环境变量：当前密钥为 `PANEL_MASTER_KEY`，轮换期间的旧密钥为 `PANEL_MASTER_KEY_PREVIOUS`。格式都是 `"<key_id>:<base64>"`：`key_id` 为 1–255 的十进制整数，即密文的第一个字节；base64 为标准编码的 32 字节密钥。两把密钥的 `key_id` 必须不同，格式错误时拒绝启动。
   - `panel keys rotate` 分批用当前主密钥重新加密全部 `_enc` 值，完成后旧密钥才可下线。
   - 签名私钥（PASETO 访问令牌、`/v1/config` 的 Ed25519 签名、Agent 发布签名）不入库，存放方式与主密钥相同。每个签名都带 key id，验证方同时接受当前与下一把公钥。
   - 主密钥与签名私钥的备份、恢复要求见 spec/40 DEP-10。
@@ -154,6 +163,14 @@
   - 同一事件消费失败 10 次后，移入 `events:dead:{topic}` 并告警。
   - 对账任务每 5 分钟执行一次：已发布超过 10 分钟、仍没有消费记录的事件，重新投递。这可以覆盖 Valkey 丢失已确认数据的情况（spec/22 ACC-07）。
   - 已发布且已被全部消费方处理、超过 7 天的 outbox 行删除。
+- **CONV-34** 事件载荷为 JSON 对象，均带 `schema_version`（从 1 开始，只增字段，CONV-22）。已定义的载荷：
+
+| 主题 | 载荷 |
+|---|---|
+| `credential.changed` | `{schema_version, account_id, credential_id, change}`；`change` 取 `created`、`rotated`、`revoked` |
+
+  其他主题的载荷在实现对应任务时加入本表。
+
 - 外发通知不走事件主题：业务代码在同一事务中直接写 `notification_outbox`（spec/13 OPS-02）。
 
 ## 2.7 日志与隐私

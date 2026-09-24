@@ -9,13 +9,13 @@
 | 分组 | 表 | 规格 |
 |---|---|---|
 | 账号与认证 | `accounts`、`roles`、`account_roles`、`staff_invitations`、`mfa_totp`、`mfa_webauthn`、`verification_codes`、`sessions`、`devices` | spec/10 |
-| 凭据与导出 | `proxy_credentials`、`export_tokens`（`token_hash` 与 `token_enc`） | spec/10、spec/23 |
+| 凭据与导出 | `proxy_credentials`（`secret_enc` 的明文为 16 字节原始 UUIDv4，spec/21 AGT-15；00001 中的列注释“UUID / 密码等”已过时，由后续迁移以 `COMMENT ON COLUMN` 更正，见 backlog M1-03）、`export_tokens`（`token_hash` 与 `token_enc`） | spec/10、spec/23 |
 | 节点 | `kernels`、`kernel_protocols`、`kernel_transports`、`machines`、`nodes`（含 `last_report_seq`）、`location_groups`、`node_group_members`、`inbounds`（非敏感配置在 `settings`，私钥在 `secrets_enc`）、`node_routes` | spec/20、spec/21 |
 | 套餐与权益 | `plans`、`plan_groups`、`plan_prices`、`addon_prices`、`entitlements`、`entitlement_events`、`addons`、`usage_cycles` | spec/11 |
 | 订单与支付 | `quotes`、`orders`（含 `payer_ref_hash`、累计退款）、`payment_providers`、`payment_notifications`、`refunds`、`credit_ledger`（视图 `account_balances`）、`coupons`、`coupon_redemptions`、`redeem_codes`、`redeem_redemptions` | spec/12 |
 | 流量 | `ingest_batches`、`traffic_hourly`（按月分区，按账号、节点、小时）、`traffic_daily` | spec/22 |
 | 运营 | `announcements`、`support_tickets`、`support_messages`、`support_attachments`、`articles`、`referral_earnings`、`notification_templates`、`notification_preferences`、`notification_outbox` | spec/13 |
-| 基础设施 | `settings`、`outbox`、`consumed_events`、`idempotency_keys`、`job_fencing`、`audit_logs`（含 `reason`、`request_id`） | spec/02、spec/40 |
+| 基础设施 | `settings`（含只读键 `site_timezone`、`site_currency`）、`outbox`、`consumed_events`、`idempotency_keys`、`job_fencing`、`audit_logs`（含 `reason_id`、`request_id`）、`reason_texts` | spec/02、spec/40 |
 
 ## 3.2 关系
 
@@ -37,6 +37,9 @@ erDiagram
   orders ||--o{ payment_notifications : receives
   orders ||--o{ refunds : refunded_by
   entitlements ||--o{ entitlement_events : logged_by
+  reason_texts ||--o{ entitlement_events : explains
+  reason_texts ||--o{ audit_logs : explains
+  accounts |o--o{ accounts : referred
   redeem_codes ||--o{ redeem_redemptions : used_by
 ```
 
@@ -57,5 +60,42 @@ erDiagram
 | 同一账号对同一兑换码只能兑换一次 | 唯一约束 `redeem_redemptions (redeem_code_id, account_id)` |
 | 百分比优惠券的 `value ≤ 10000` | CHECK |
 | 幂等键按“账号或路由 + 键”唯一，未认证请求的 `account_id` 可以为空 | 唯一索引（CONV-12） |
+| `site_timezone`、`site_currency` 初始化后只读 | 触发器 `settings_readonly`（CONV-08、CONV-26） |
+| 只追加表不保存原因原文；`admin_adjust` 权益事件必须带原因 | `reason_id` 外键引用 `reason_texts`；CHECK `type <> 'admin_adjust' OR reason_id IS NOT NULL`（CONV-29） |
+| `tier = 0` 只属于免费套餐 | CHECK `(kind = 'free') = (tier = 0)`（spec/11 11.1） |
+| 余额流水的方向由原因决定 | CHECK：`order_payment`、`account_deletion` 为负；`referral`、`admin_adjust` 可正可负；其余为正（spec/12 ORD-16） |
+| 加购报价引用加购价格，其他报价引用套餐价格 | `quotes` 的 CHECK：`(order_type = 'addon') = (addon_price_id IS NOT NULL)`，`price_id` 与 `addon_price_id` 恰有一个非空 |
+| 原路退款不超过累计退款 | CHECK `refunded_original_minor <= refunded_minor` |
 
 应用层还必须保证数据库无法表达的规则，见各规格中的编号规则。例如：余额扣减后不为负，由下单事务中的账号行锁保证（spec/12 ORD-15）。
+
+## 3.4 M0-05 定稿时补入的列
+
+以下列在 M0-05 修订 00001 时加入，字段级定义以 `00001_init.sql` 为准。
+
+| 表 | 列 | 用途 |
+|---|---|---|
+| `accounts` | `referrer_id`（原 `referred_by`，按 CONV-17 改名） | 邀请人 |
+| `roles` | `is_builtin` | 内置角色不可修改、不可删除（spec/10 AUTH-22），由应用层保证 |
+| `sessions` | `audience`（`client` 或 `console`） | 令牌受众（spec/10 AUTH-06、AUTH-21） |
+| `sessions` | `ip_prefix` | 来源 IP 的 /24 或 /48 前缀（CONV-24），用于 AUTH-07 |
+| `mfa_totp` | `last_used_step` | 同一时间步内已用过的码不得再次使用（spec/10 AUTH-11） |
+| `quotes`、`orders`、`addons` | `addon_price_id` | 加购项引用的加购价格 |
+| `addons` | `paid_minor` | 加购项实付，单独退款的依据（spec/11 BIL-25） |
+| `orders` | `refunded_original_minor` | 累计退款中原路退回的部分 |
+| `refunds` | `addon_id` | 加购项单独退款（BIL-25） |
+| `support_tickets` | `status_changed_at` | 自动关闭与重新打开的判定依据（spec/13 OPS-11） |
+| `notification_outbox` | `retry_until`、`failed_at`、`secret_variables_enc` | 最长重试时间与最终失败（OPS-02）；含令牌、验证码或链接的变量（CONV-31） |
+| `coupons`、`redeem_codes` | `disabled_at` | 停用时间 |
+| `entitlement_events`、`audit_logs` | `reason_id` | 原因文本引用（CONV-29） |
+
+## 3.5 内核基线
+
+`kernel_protocols` 与 `kernel_transports` 的初始数据与 spec/21 21.2 的两张矩阵一致（不支持的组合没有行）：
+
+| 内核 | 协议 | 传输 |
+|---|---|---|
+| `singbox` | 稳定：`vless`、`vmess`、`trojan`、`shadowsocks`、`hysteria2`、`tuic`、`anytls` | 稳定：`tcp`、`ws`、`grpc`、`httpupgrade`、`quic` |
+| `xray` | 稳定：`vless`、`vmess`、`trojan`、`shadowsocks`；实验：`hysteria2` | 稳定：`tcp`、`ws`、`grpc`、`httpupgrade`、`xhttp`、`mkcp`；实验：`quic` |
+
+两张表分别以（内核, 协议）与（内核, 传输）为键，表达不了“协议 + 传输”的组合限制，已知限制见 spec/21 21.2。
