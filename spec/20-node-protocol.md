@@ -9,10 +9,10 @@
   - PSK 在控制面加密存储（CONV-19），在 Agent 本地保存为 0600 权限的文件。
   - 令牌在首次成功后作废。首次成功后 10 分钟内，以同一令牌、同一主机指纹重复提交的，返回相同结果，以便 Agent 在响应丢失后重试；其他情况返回 404。
 - **NODE-18** 接入接口的请求与响应在 `panel-spec/proto/node/v1/enrollment.proto` 中定义：HTTP 请求体与响应体为对应消息的 protobuf 编码，错误为 problem+json（ARC-01）。
-- **NODE-03** 重新签发接入令牌时，保留节点 ID、线路组、入站与路由配置。新 Agent 接入后，新 PSK 写入 `psk_enc`，旧 PSK 移到 `psk_prev_enc`。新 PSK 首次握手成功时，在同一事务中清空 `psk_prev_enc`，并关闭以旧 PSK 建立的全部会话。
+- **NODE-03** 重新签发接入令牌时，保留节点 ID、线路组、入站与路由配置。新 Agent 接入后，新 PSK 写入 `psk_enc`，旧 PSK 移到 `psk_prev_enc`。新 PSK 首次握手成功时，在同一事务中清空 `psk_prev_enc`，并关闭以旧 PSK 建立的全部会话：按 NODE-21 被顶替的会话处理，以关闭码 4007 关闭（NODE-26）。
 - **NODE-19** 立即吊销节点密钥（节点失陷，spec/40 40.4）：
   - 管理员调用 `/v1/hosts/{id}/key-revocations`（敏感操作）后，在同一事务中清空 `psk_enc` 与 `psk_prev_enc`，节点状态回到 `pending_enroll`。
-  - 立即关闭该节点的全部会话，关闭时发送 `HelloReject(revoked)` 或关闭码 4006。
+  - 立即以关闭码 4006 关闭该节点的全部已建立会话（NODE-26）；正在握手的连接收到 `hello_reject(revoked)`。
   - 重新接入必须签发新的接入令牌。
 - **NODE-04** 控制面可以在建档或添加入站时生成 Reality 密钥对与短 ID。
 
@@ -57,7 +57,7 @@ sequenceDiagram
 - **NODE-07** 保活：
   - 每 25 秒发送一次 Ping，连续 3 次无响应即重连。重连前等待 `random(0, min(30s, 1s × 2ⁿ))`。
   - 网关做连接准入限速，超限返回 503 与 `Retry-After`。这是面向 Agent 的 HTTP 响应，不使用 CONV-16 的错误码。
-- **NODE-21** 同一个 `node_id` 同时至多有一条已认证会话。新会话握手成功后，网关在同一 `node_id` 的注册表项上以比较并写入的方式记录新会话（spec/40 DEP-07），并关闭旧会话（`hello_reject(superseded)` 或关闭码 4007）。旧会话上未确认的指令不转交，由新会话按 NODE-15 的版本同步补齐。
+- **NODE-21** 同一个 `node_id` 同时至多有一条已认证会话。新会话握手成功后，网关在同一 `node_id` 的注册表项上以比较并写入的方式记录新会话（spec/40 DEP-07），并以关闭码 4007 关闭旧会话（NODE-26）。旧会话上未确认的指令不转交，由新会话按 NODE-15 的版本同步补齐。
 
 ## 20.3 握手（与传输无关，在首个帧中完成）
 
@@ -76,7 +76,7 @@ sequenceDiagram
    - 附加数据为方向字节（Agent → 控制面为 `0x01`，控制面 → Agent 为 `0x02`）‖ `seq`（8 字节大端）。
    - nonce 不得由 `seq` 派生，以免重传时用同一 nonce 加密不同的明文。
 5. 握手 5 秒内未完成即关闭连接。长轮询按请求计时。
-- **NODE-22** 握手失败时，网关先发送 `Frame.hello_reject{reason, retry_after_ms}`，再关闭连接；WebSocket 同时使用对应的关闭码。`hello_reject` 在握手认证之前发送，不带 MAC，完整性只依赖 TLS，因此任何原因都不会让 Agent 永久停止重连。Agent 按原因处理：
+- **NODE-22** 握手失败时，网关先发送 `Frame.hello_reject{reason, retry_after_ms}`，再关闭连接；`hello_reject` 只在握手阶段发送（已建立的会话见 NODE-26）；WebSocket 同时使用对应的关闭码。`hello_reject` 在握手认证之前发送，不带 MAC，完整性只依赖 TLS，因此任何原因都不会让 Agent 永久停止重连。Agent 按原因处理：
 
 | `reason` | 关闭码 | Agent 行为 |
 |---|---|---|
@@ -88,11 +88,13 @@ sequenceDiagram
 | `revoked` | 4006 | 提示需要重新接入，改为每小时重试一次 |
 | `superseded` | 4007 | 同一节点有更新的会话（NODE-21）。本进程另有更新的会话时，只关闭这条旧连接；否则记录日志，提示可能有重复运行的 Agent，并改为每小时重试一次 |
 
+- **NODE-26** 已建立会话的关闭：握手完成后每个方向只允许 `Frame.sealed`（`envelope.proto`）。因此会话建立后发生吊销（NODE-19）、被顶替（NODE-21）或 PSK 轮换完成（NODE-03）时，网关不发送 `hello_reject`，只以 WebSocket 关闭码关闭连接：吊销为 4006，被顶替与 PSK 轮换为 4007。Agent 按 NODE-22 表中同一关闭码的行为处理。备用通道（NODE-06）没有关闭码，其对应表示在 M5-02 中确定。
+
 ## 20.4 可靠投递
 
 - **NODE-12** 序号与确认：
   - 握手帧（`hello`、`hello_ack`、`hello_reject`）的 `seq` 为 0。之后在一次握手的会话内，每个方向从 1 开始递增。`Envelope.ack` 捎带已收到对端的最大连续序号。
-  - 会话内出现重复或不递增的 `seq` 时，关闭连接。WebSocket 基于有序可靠的 TCP，同一连接内不做超时重传。
+  - 会话内收到的 `seq` 必须恰好比上一帧大 1（首帧为 1）。重复、不递增或跳号一律视为协议错误，以 WebSocket 关闭码 1002（RFC 6455 协议错误）关闭连接，Agent 按 NODE-07 退避后重连。WebSocket 基于有序可靠的 TCP，同一连接内不做超时重传；跳号意味着中间的帧已经丢失，而丢失的帧在同一连接内永远得不到确认，只能断线后按下一条重发。
   - 重连后，发送方把未确认的信封以新会话的 `seq` 重发，`idem_key` 保持原值。
 - **NODE-13** 投递语义为“至少一次 + 幂等”：
   - `idem_key` 为发送方生成的 UUIDv7。接收方的去重记录至少保留 24 小时，Agent 侧写入本地状态（spec/21 AGT-05）。
@@ -101,7 +103,8 @@ sequenceDiagram
 - **NODE-23** 带版本的指令：
   - 控制面每次向某节点下发配置变更，都在同一事务中把该节点的 `config_version` 加 1（spec/11 ACS-02）；重传的指令保持原版本号。
   - 收到 `SyncFull` 时，版本高于本地才应用，否则只确认不应用。
-  - 收到增量指令（`SyncDelta`、`CredUpsert`、`CredRemove`、`InboundApply`、`RoutesApply`）时：版本不大于本地的，只确认不应用；版本等于本地加 1 的，应用；版本跳号的，不应用，改为请求全量同步。
+  - 收到增量指令（`CredUpsert`、`CredRemove`、`InboundApply`、`RoutesApply`）时：版本不大于本地的，只确认不应用；版本等于本地加 1 的，应用；版本跳号的，不应用，改为请求全量同步。
+  - 收到 `SyncDelta` 时：`to_version` 不大于本地的，只确认不应用；`from_version` 等于本地已应用版本的，应用，本地版本前进到 `to_version`；其余情况不应用，改为请求全量同步。本地版本落在 `from_version` 与 `to_version` 之间时同样请求全量同步，不做部分应用。
   - 请求全量同步的方式是断开连接后重连，并在 `Hello` 中把 `config_version` 设为 0。
   - 快照校验失败、指令应用失败或内核切换失败时，Agent 保留原配置（spec/21 AGT-07），不前进已应用的版本号，并按上一条请求全量同步。同一节点 10 分钟内失败 3 次，控制面告警。
 - **NODE-14** 待确认窗口有上限（默认 1,000 条或 8 MiB），两个方向的处理不同：
