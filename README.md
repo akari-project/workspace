@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 # workspace：开源 VPN 控制面板的开发工作区
 
 最终目的：GO开发一个类似于传统 xboard v2board VPN商业面板      高性能  生产级   易维护    。

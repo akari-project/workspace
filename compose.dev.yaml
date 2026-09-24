@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # 本地开发依赖。生产部署文件在 panel/deploy/。
 services:
   postgres:
