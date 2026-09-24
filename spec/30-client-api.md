@@ -24,7 +24,7 @@
 
 | 接口 | 说明 |
 |---|---|
-| `GET /v1/config` | 客户端启动配置：最低版本、公告版本、功能开关（`features`，spec/13 OPS-08）、备用域名；用 Ed25519 签名，签名对象为 `payload` 按 RFC 8785（JCS）规范化后的字节，带 `key_id`，公钥内置于客户端（CONV-30） |
+| `GET /v1/config` | 客户端启动配置：最低版本、公告版本、功能开关（`features`，spec/13 OPS-08）、注册策略（可选字段 `registration_policy`，缺省时前端按 `open` 处理，以服务端校验为准；不下发域名名单）、备用域名；修改注册策略后重新生成签名与 ETag；用 Ed25519 签名，签名对象为 `payload` 按 RFC 8785（JCS）规范化后的字节，带 `key_id`，公钥内置于客户端（CONV-30） |
 | `GET /v1/releases/latest?platform=` | 新版本信息与安装包签名 |
 | `GET /v1/assets/{digest}` | 按内容寻址的规则集等公共资源，可以由 CDN 缓存 |
 | `GET /v1/plans` | 在售套餐与价格，以及加购项价格 |

@@ -20,3 +20,4 @@
 | [0014](0014-client-mihomo.md) | 自研客户端使用 mihomo 内核 | 已接受 |
 | [0015](0015-builtin-alipay-f2f.md) | 内置支付宝当面付，取消进程外支付插件 | 已接受（取代 ADR 0011） |
 | [0016](0016-embedded-frontends.md) | 前端嵌入控制面二进制 | 已接受 |
+| [0017](0017-refresh-retry-cache.md) | 刷新令牌重试窗口缓存新令牌对 | 已接受 |
