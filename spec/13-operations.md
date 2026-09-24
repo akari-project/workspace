@@ -32,7 +32,7 @@
 
 - 工单包含主题、分类、内容；客服可以指派处理人。
 - **OPS-10** 附件：
-  - 只允许 PNG、JPEG、WebP，按文件内容识别类型，不信任扩展名与请求头；单个不超过 5 MB，每条消息最多 4 个；超限返回 413 `payload_too_large`。
+  - 只允许 PNG、JPEG、WebP，按文件内容识别类型，不信任扩展名与请求头；单个不超过 5 MiB，每条消息最多 4 个；超限返回 413 `payload_too_large`。
   - 先调用 `POST /v1/support/attachments` 上传，取得附件 ID，再在消息中引用。存储在本地或 S3 兼容存储中。
   - 下载需要鉴权，只有工单所有人与拥有 `tickets.*` 权限的管理员可以下载；响应带 `Content-Disposition: attachment` 与 `X-Content-Type-Options: nosniff`。
 - **OPS-11** 状态流转：

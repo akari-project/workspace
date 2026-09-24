@@ -46,3 +46,5 @@
 | 模拟 Agent | 完整实现节点协议但不运行内核的测试程序 | — | — | — | `panel/server/e2e/fakeagent` |
 
 对外接口禁止使用的词：`subscribe`、`server`、`node`、`traffic`（见 spec/30 API-01）。数据库、节点协议与内部代码不受此限制。
+
+流量与容量单位统一为 1024 进位的 KiB、MiB、GiB、TiB，不写 KB、MB、GB、TB；接口与数据库中仍为字节（spec/02 CONV-07、CONV-33）。
