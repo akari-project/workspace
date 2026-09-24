@@ -15,6 +15,7 @@
 ## 仓库
 | 目录 | 内容 | 许可证 |
 |---|---|---|
+| workspace（本目录） | 规格、backlog、ADR、脚本与 Claude Code 配置 | Apache-2.0 |
 | panel-spec/ | 节点协议 proto、客户端与管理接口 OpenAPI | Apache-2.0 |
 | panel/ | 控制面后端 server/ + 前端 web/（portal、admin、ui、sdk） | AGPL-3.0-or-later |
 | node-agent/ | fork 自 Xboard-Node，通信层改为本项目协议 | GPL-3.0-or-later（原有文件保留 MPL-2.0） |
