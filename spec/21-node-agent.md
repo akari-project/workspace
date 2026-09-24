@@ -16,7 +16,9 @@
 | WAL 与 `report_seq`、配额租约、离线租约、能力上报、按凭据计量 | 新增 |
 
 - **AGT-01** 新代码放在新包中；对原有包只做接线级修改，并在 `UPSTREAM.md` 登记（文件、原因、冲突风险）。
-- **AGT-02** Xboard-Node 原有文件保留 MPL-2.0 声明，并在 `REUSE.toml` 中登记（CONV-25）；新文件为 GPL-3.0-or-later；二进制整体按 GPL-3.0-or-later 分发；来源列入 `NOTICE`。
+  - Go 模块路径保持 `github.com/cedar2025/xboard-node`，不改名，以免改动全部原有文件的 import 行、增加与上游合并的冲突。
+  - 被替换的通信层包（`internal/panel`、`internal/controlplane` 中的面板对接部分、`model/panel.go`，以 `FORK_PLAN.md` 为准）在 M3 的新通信层可用、一致性测试对真实 Agent 通过之后删除，此前保留但不再接线。
+- **AGT-02** Xboard-Node 上游文件没有逐文件的许可证声明，不补 SPDX 头，而是在 `REUSE.toml` 中按路径登记为 MPL-2.0（CONV-25），并附 `LICENSES/MPL-2.0.txt`；来源与版权写入 `NOTICE`。新文件为 GPL-3.0-or-later，带 SPDX 头；二进制整体按 GPL-3.0-or-later 分发。
 - **AGT-03** 每月挑选上游的内核、协议、证书修复合入；不再跟随上游通信层的改动。
 - **AGT-04** 内核 fork 复制到本组织，并锁定到 Xboard-Node 当前 `replace` 所指的提交；`replace` 改为指向本组织的副本。优先合入 Xboard-Node 作者的 fork 更新，落后过久时自行 rebase。
 - **AGT-05** 本地状态：
@@ -64,20 +66,22 @@
 | mKCP | 不支持 | 稳定 |
 | QUIC（Hysteria2、TUIC 自带） | 稳定 | 实验（仅 Hysteria2） |
 
-- **AGT-14** 入站 `settings` 必须包含 `transport`，值与 proto 的 `Inbound.transport` 一致；数据库校验以 `settings->>'transport'` 为准。Reality 只用于 VLESS（TCP、gRPC、XHTTP）与 AnyTLS（TCP）。具体的“协议 + 传输”组合见 `panel-spec/schemas/inbound/README.md`；组合范围与 mKCP 等字段在 M0-04 审计时确认，有变化时同步修改 schema 与本节。
+- **AGT-14** 入站 `settings` 必须包含 `transport`，值与 proto 的 `Inbound.transport` 一致；数据库校验以 `settings->>'transport'` 为准。Reality 只用于 VLESS（TCP、gRPC、XHTTP）与 AnyTLS（TCP）。具体的“协议 + 传输”组合见 `panel-spec/schemas/inbound/README.md`；组合范围与 mKCP 字段已由 M0-04 审计确认：当前 Xray-core 删除了 mKCP 的 `header` 与 `seed`，改为 `finalmask`，schema 从 panel-spec v0.2.0 起使用必填的 `mkcp.finalmask`（`obfs` 必填，没有隐式默认值）；内核升级导致字段变化时，同步修改 schema 与本节。
 
-基线随内核升级，通过新迁移更新；传输基线在 M0-04 审计后确认。XHTTP 与 mKCP 只有 Xray 提供，是选择 Xray 内核的主要理由。
+基线随内核升级，通过新迁移更新；传输基线已由 M0-04 审计确认，与上表一致（spec/03 3.5）。XHTTP 与 mKCP 只有 Xray 提供，是选择 Xray 内核的主要理由。
+
+已知限制：数据库基线 `kernel_transports` 以（内核, 传输）为键，表达不了“Xray 的 QUIC 仅限 Hysteria2”这类协议与传输的组合限制。当前 Xray 不支持 TUIC，因此触发器的结果仍然正确；若内核升级后出现“协议与传输分别受支持、组合不受支持”的情况，由控制面按 `panel-spec/schemas/inbound/` 中是否存在该组合的 schema 与 `x-kernels` 注解做应用层校验，在 M2-03 中处理。
 
 ## 21.3 内核接口
 
-M0-04 审计后，把 Xboard-Node 现有的内核抽象对齐到以下能力（名称以 `FORK_PLAN.md` 为准）：
+M0-04 审计后，把 Xboard-Node 现有的内核抽象对齐到以下能力（名称以 `FORK_PLAN.md` 为准）。M3 起内核接口以凭据 ID 为身份键，不再使用上游的整数用户 ID：
 
 ```go
 type Kernel interface {
   Start(ctx context.Context, cfg InboundSet) error
   ApplyInbounds(cfg InboundSet) error          // 只中断被修改或删除的入站上的连接
-  UpsertCreds(tag string, c []Credential) error // 不影响其他凭据的连接
-  RemoveCreds(tag string, ids []string) error   // 关闭这些凭据的全部连接
+  UpsertCreds(tag string, c []Credential) error // 不影响其他凭据的连接；tag 只在 Agent 内部使用（AGT-15）
+  RemoveCreds(tag string, ids []string) error   // 关闭这些凭据的全部连接；tag 同上
   Sessions(credID string) []Session
   Capabilities() KernelSupport
   Close() error
@@ -90,6 +94,16 @@ type Kernel interface {
   - 按凭据计量误差为 0。计量口径为客户端与入站之间解密后的代理载荷字节，不含 TLS、QUIC 与代理协议头：上行为客户端 → 节点，下行为节点 → 客户端，多路复用子连接合并计入所属凭据。
 
   验收方法：用已知大小的载荷逐个协议、逐个传输测试，计数必须与载荷字节数完全相等。
+
+  - 内核 fork 只允许三类补丁：进程内增删用户、连接计量钩子、按凭据关闭会话（每个补丁一个独立提交，登记在该 fork 的 `PATCHES.md`）。sing-box 按数组下标识别用户的修正属于“增删用户”；Xray Vision splice 路径的下行计数修正（FORK_PLAN MTR-7）属于“计量钩子”。
+  - 实验协议与实验传输（如 Xray 的 Hysteria2 与 QUIC）在该内核上通过以上三项能力的验收之前，不得从“实验”改为“稳定”；改为稳定时同时修改 21.2 的矩阵与数据库基线。
+
+- **AGT-15** 凭据与入站的关系：
+  - 一条凭据施加于该节点的全部入站。节点协议中的凭据消息（`Snapshot.credentials`、`SyncDelta`、`CredUpsert`、`CredRemove`）不带入站 tag；Agent 把每条凭据加入每个入站，移除时从每个入站移除并关闭其全部连接。
+  - 上面接口中 `UpsertCreds`、`RemoveCreds` 的 `tag` 参数只在 Agent 内部使用：由 Agent 对每个入站逐一调用，或由内核适配器按入站组织内部数据结构，不对应协议中的任何字段。
+  - `Credential.secret` 为 16 字节 UUIDv4 的二进制形式；它在各协议中的使用形式（VLESS、VMess、Trojan、Shadowsocks 与 Shadowsocks 2022、TUIC、Hysteria2、AnyTLS）以 `panel-spec`（v0.2.0 起）`proto/node/v1/messages.proto` 中 `Credential` 的注释为准，两个内核必须一致。
+  - 这些形式全部由控制面生成并下发（包括 Shadowsocks 2022 的用户密钥 `ss2022_key_16`、`ss2022_key_32`，生成规则见 spec/23 EXP-09），Agent 只做注释规定的编码，不做派生。
+  - `secret` 长度不是 16 字节，或 `ss2022_key_16`、`ss2022_key_32` 为空或长度错误时，Agent 不把该凭据加入任何入站，同一消息中的其他凭据照常应用，并在 `ReportStatus.kernel_error` 中报告，格式为 `credential <id>: invalid length`，多条以分号分隔，不含秘密值；该错误只在凭据被移除或被正确的值替换后清空。
 
 ## 21.4 生命周期
 
