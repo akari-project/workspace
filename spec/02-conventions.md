@@ -178,5 +178,7 @@
 - **CONV-23** 结构化日志（`slog`）的字段：`request_id`、`account_id`、`node_id`、`route`、`status`、`duration_ms`。`route` 记录路由模板（如 `GET /v1/configurations/{token}`），不记录实际路径。
 - **CONV-24** 禁止记录：密码、令牌、导出链接、代理凭据、密钥、完整 IP（需要时只记录 /24 或 /48 前缀）、访问目标。前置代理的访问日志要求见 spec/40 DEP-13。
 - **CONV-25** SPDX 许可证标识位于每个源文件的前两行之内：第一行是 shebang 或 `//go:build` 时，放在紧随其后的一行。许可证与所在仓库一致。
-  - 来自上游、不补 SPDX 头的文件，在仓库根目录的 `REUSE.toml` 中登记，包括 node-agent 中来自 Xboard-Node 的文件，以及两个内核 fork 中的上游文件。
-  - 两个内核 fork 只检查本组织新增的文件。
+  - node-agent 中来自 Xboard-Node、不补 SPDX 头的上游文件，在仓库根目录的 `REUSE.toml` 中按路径登记（spec/21 AGT-02）。`REUSE.toml` 登记上游文件的做法只适用于这一种情况。
+  - 两个内核 fork 只检查本组织新增的文件，即相对上游基点新增的文件；上游文件不补 SPDX 头，也不在 `REUSE.toml` 中逐一登记。
+    - 上游基点记录在该仓库 panel-ci workflow 的 `UPSTREAM_BASE` 中（上游提交或 tag）。
+    - 每次跟随上游（`core-upgrade`，spec/21 AGT-04）后，在同一提交中把 `UPSTREAM_BASE` 更新为新的上游基点。
