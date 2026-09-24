@@ -117,7 +117,7 @@
   - 只追加表只保存 `reason_id` 引用：`audit_logs.reason_id`（spec/10 AUTH-18）、`entitlement_events.reason_id`；
   - `entitlement_events` 中 `type = 'admin_adjust'` 的行必须带 `reason_id`（CHECK，spec/11 11.6）；`credit_ledger` 不保存原因，余额调整的原因写在对应的 `audit_logs` 中；
   - 删除账号个人数据时，把该账号的 `reason_texts.body` 清空为空串，保留行以维持引用。
-- **CONV-19** 敏感值用应用层 AEAD 加密，列名以 `_enc` 结尾。敏感值包括：节点密钥、TOTP 密钥、支付私钥、DNS 服务商凭据、代理凭据、导出令牌明文（CONV-20），以及入站配置中的私钥（Reality `private_key`、Shadowsocks 2022 服务端密钥）。入站私钥保存在 `inbounds.secrets_enc`，不写入 `inbounds.settings`；控制面生成节点快照时合并进 `settings_json`。
+- **CONV-19** 敏感值用应用层 AEAD 加密，列名以 `_enc` 结尾；保存在 `settings` 中的敏感值，键名以 `_enc` 结尾，值为密文的 base64 JSON 字符串，任何接口都不返回这类键（只以 `has_*` 布尔字段表示是否已设置）。敏感值包括：节点密钥、TOTP 密钥、支付私钥、DNS 服务商凭据、代理凭据、通知渠道凭据（SMTP 密码 `smtp_password_enc`、Telegram Bot 令牌、Webhook 签名密钥）、导出令牌明文（CONV-20），以及入站配置中的私钥（Reality `private_key`、Shadowsocks 2022 服务端密钥）。入站私钥保存在 `inbounds.secrets_enc`，不写入 `inbounds.settings`；控制面生成节点快照时合并进 `settings_json`。
 
   加密要求不限于数据库列，同样适用于以下位置中出现的敏感值：
   - Valkey 中的缓存（如导出配置，spec/23 EXP-07）；
@@ -129,12 +129,14 @@
 - **CONV-30** 密文格式为 `key_id（1 字节）‖ nonce ‖ ciphertext`。
   - 运行时同时加载当前主密钥与至多一把旧主密钥。
   - 主密钥来自环境变量：当前密钥为 `PANEL_MASTER_KEY`，轮换期间的旧密钥为 `PANEL_MASTER_KEY_PREVIOUS`。格式都是 `"<key_id>:<base64>"`：`key_id` 为 1–255 的十进制整数，即密文的第一个字节；base64 为标准编码的 32 字节密钥。两把密钥的 `key_id` 必须不同，格式错误时拒绝启动。
-  - `panel keys rotate` 分批用当前主密钥重新加密全部 `_enc` 值，完成后旧密钥才可下线。
+  - `panel keys rotate` 分批用当前主密钥重新加密全部 `_enc` 值（包括 `settings` 中以 `_enc` 结尾的键），完成后旧密钥才可下线。
   - 签名私钥（PASETO 访问令牌、`/v1/config` 的 Ed25519 签名、Agent 发布签名）不入库，存放方式与主密钥相同。每个签名都带 key id，验证方同时接受当前与下一把公钥。
   - 主密钥与签名私钥的备份、恢复要求见 spec/40 DEP-10。
 - **CONV-20** 令牌、兑换码、验证码只存 SHA-256，列名以 `_hash` 结尾。
 
-  **例外**：导出令牌同时保存 `token_hash`（用于查找）与 `token_enc`（CONV-19，用于在用户中心与帮助文档中再次显示导入链接）。
+  **例外**：
+  - 导出令牌同时保存 `token_hash`（用于查找）与 `token_enc`（CONV-19，用于在用户中心与帮助文档中再次显示导入链接）。
+  - 刷新令牌轮换后签发的新令牌对，按 CONV-19 加密后在 Valkey 中缓存 10 秒，用于 AUTH-07 的重试判定（ADR 0017）。
 - **CONV-31** 通知队列（`notification_outbox`）中含令牌、验证码或链接的变量，按 CONV-19 加密存储；投递成功或最终失败后立即清除这些变量。
 - **CONV-21** 迁移规则：
   - 迁移只前进，不写 `-- +goose Down` 段；回滚只回退二进制，不回退迁移（spec/40 DEP-12）。

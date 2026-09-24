@@ -8,6 +8,7 @@
   - 为防止枚举账号，邮箱已注册时注册接口返回与成功时相同的 202 响应（“验证邮件已发送”），不创建账号，改为向该邮箱发送“有人尝试用你的邮箱注册”的通知。
 - **AUTH-02** 注册策略可配置：开放、仅邀请码、关闭；另可设邮箱域名白名单或黑名单。
   - “仅邀请码”接受两种码，都通过 `invite_code` 字段提交：账号邀请码（`accounts.referral_code`），以及管理员生成的注册码。返利模块关闭时，账号邀请码仍可用于注册，但不产生返利。
+  - 策略与域名名单保存在 `settings`（键名见 spec/03 3.6）。两个名单可以同时设置：邮箱域名（`@` 之后的部分，小写，精确匹配）在黑名单中即拒绝；白名单非空时，不在白名单中也拒绝。被拒绝时返回 400，`errors[].code` 为 `not_allowed`。
   - 注册关闭，或策略要求邀请码而请求未提供时，返回 403 `registration_closed`；邀请码无效时返回 400，`errors[].code` 为 `invalid_code`。
   - 人机验证预留：定义 `CaptchaVerifier` 接口，注册、登录、找回密码请求可以携带 `captcha_token`；默认实现总是通过。
 - **AUTH-03** 邮箱验证码为 6 位数字，15 分钟有效，最多尝试 5 次。重新发送每个账号每分钟 1 次、每天 10 次；发送新码后旧码作废。已登录时只提交验证码，未登录时提交邮箱与验证码。未验证邮箱的账号可以登录，但下单返回 `email_unverified`。
@@ -34,6 +35,10 @@
   - 为不透明随机值，服务端只存哈希，每次使用即轮换。
   - 客户端会话空闲 30 天失效，自首次登录起 90 天绝对失效。管理会话的有效期见 AUTH-21。
   - 已轮换的刷新令牌再次出现时，吊销整条会话链（`sessions.parent_id`）。例外：轮换后 10 秒内再次出现，且来源 IP 前缀与 User-Agent 相同时，返回与第一次相同的新令牌对，不判为泄露（多标签页或客户端重试）。
+    - 10 秒以注入时钟与被轮换会话的 `used_at` 判定（CONV-04、CONV-27）；IP 前缀与 User-Agent 与子会话的 `ip_prefix`、`user_agent` 比对。
+    - 新令牌对按 CONV-19 加密，以旧刷新令牌的哈希为键在 Valkey 中缓存，TTL 10 秒只作为上界（CONV-20 例外，ADR 0017）。
+    - 窗口内且指纹一致、但缓存未命中（如 Valkey 丢失数据）时，返回 `invalid_grant`，不签发新令牌，也不吊销会话链；窗口外或指纹不一致时，一律吊销整条会话链。
+  - 绝对失效时间保存在 `sessions.absolute_expires_at`：首次登录时写入，轮换时由子会话继承；为空时以 `expires_at` 为准。管理会话的 12 小时绝对失效（AUTH-21）同样写在该列。
 - **AUTH-08** 浏览器中的访问令牌与刷新令牌放在 HttpOnly、Secure、SameSite=Strict、Path=/ 的 Cookie 中，响应体不返回令牌；自研客户端把令牌存入系统安全存储。
   - 用户中心使用 `__Host-access_token`、`__Host-refresh_token`；
   - 管理后台使用独立的 `__Host-console_access_token`、`__Host-console_refresh_token`。两个应用可以部署在同一主机、只以路径前缀区分（spec/31 CON-01、spec/40 DEP-02），而 `__Host-` Cookie 必须为 Path=/，同名会互相覆盖。
@@ -124,7 +129,7 @@
     - 与普通注册一样生成共用代理凭据（AUTH-13），在同一事务中写 `credential.changed`（载荷见 spec/02 CONV-34）与审计日志。
   - 尚未绑定二次验证的管理员登录时，第一步返回的 `mfa_required` 附带 `totp_enrollment`（密钥与 otpauth URI）；第二步提交 TOTP 码即完成绑定与本次验证，并返回恢复码。
 - **AUTH-18** 所有管理写操作写入 `audit_logs`，字段为：操作者、动作、对象、变更前后差异、来源 IP 前缀、`request_id`、`reason`（敏感操作必填）。
-  - 差异中的 `_enc` 与 `_hash` 字段只记录“已修改”，不记录取值。
+  - 差异中的 `_enc` 与 `_hash` 字段，以及 `settings` 中以 `_enc` 结尾的键，只记录“已修改”，不记录取值。
   - 审计日志不可修改，只能查询与导出（`/v1/audit-logs/exports`）。
 - **AUTH-19** 以下为敏感操作，需要以下三项：
   - 带原因：请求体中的 `reason`；DELETE 操作改用请求头 `Audit-Reason`（spec/31 CON-03）；

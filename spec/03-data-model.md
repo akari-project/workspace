@@ -99,3 +99,12 @@ erDiagram
 | `xray` | 稳定：`vless`、`vmess`、`trojan`、`shadowsocks`；实验：`hysteria2` | 稳定：`tcp`、`ws`、`grpc`、`httpupgrade`、`xhttp`、`mkcp`；实验：`quic` |
 
 两张表分别以（内核, 协议）与（内核, 传输）为键，表达不了“协议 + 传输”的组合限制，已知限制见 spec/21 21.2。
+
+## 3.6 M1 补入的列与设置键
+
+| 位置 | 名称 | 用途 |
+|---|---|---|
+| `sessions` 列 | `absolute_expires_at`（可空） | 会话链的绝对失效时间：客户端会话自首次登录起 90 天，管理会话 12 小时；轮换时继承，为空时以 `expires_at` 为准（spec/10 AUTH-07、AUTH-21）。可空以兼容上一版本二进制（spec/40 DEP-12） |
+| `settings` 键 | `registration_policy` | `"open"`、`"invite_only"`、`"closed"`，默认 `"open"`（spec/10 AUTH-02）；管理接口字段同名 |
+| `settings` 键 | `email_domain_allowlist`、`email_domain_denylist` | 邮箱域名白名单与黑名单，JSON 字符串数组，默认空（AUTH-02）；管理接口字段同名 |
+| `settings` 键 | `smtp_password_enc` | SMTP 密码密文（CONV-19）；管理接口只返回 `smtp.has_password` |
