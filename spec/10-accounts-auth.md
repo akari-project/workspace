@@ -39,7 +39,7 @@
     - 新令牌对按 CONV-19 加密，以旧刷新令牌的哈希为键在 Valkey 中缓存，TTL 10 秒只作为上界（CONV-20 例外，ADR 0017）。
     - 窗口内且指纹一致、但缓存未命中（如 Valkey 丢失数据）时，返回 `invalid_grant`，不签发新令牌，也不吊销会话链；窗口外或指纹不一致时，一律吊销整条会话链。
   - 绝对失效时间保存在 `sessions.absolute_expires_at`：首次登录时写入，轮换时由子会话继承；为空时以 `expires_at` 为准。管理会话的 12 小时绝对失效（AUTH-21）同样写在该列。
-- **AUTH-08** 浏览器中的访问令牌与刷新令牌放在 HttpOnly、Secure、SameSite=Strict、Path=/ 的 Cookie 中，响应体不返回令牌；自研客户端把令牌存入系统安全存储。
+- **AUTH-08** 浏览器中的访问令牌与刷新令牌放在 HttpOnly、Secure、SameSite=Strict、Path=/ 的 Cookie 中，响应体不返回令牌（刷新接口对浏览器返回不含令牌的响应，契约为 `CookieTokenRefresh`）；自研客户端把令牌存入系统安全存储。
   - 用户中心使用 `__Host-access_token`、`__Host-refresh_token`；
   - 管理后台使用独立的 `__Host-console_access_token`、`__Host-console_refresh_token`。两个应用可以部署在同一主机、只以路径前缀区分（spec/31 CON-01、spec/40 DEP-02），而 `__Host-` Cookie 必须为 Path=/，同名会互相覆盖。
 - **AUTH-09** 登录限流：
@@ -49,12 +49,13 @@
   - 冷却期间，找回密码流程与已登录的会话不受影响，他人无法借此锁死账号。
 - **AUTH-10** 登录时同时注册设备，记录平台、型号、应用版本、设备公钥：
   - `platform='web'`（浏览器中的用户中心）的登录只注册 web 设备，不生成代理凭据，也不计入设备上限。每个账号最多保留 50 个未吊销的 web 设备，超出时吊销最早活跃的一个及其会话。
-  - 其他平台的客户端登录时可以带上已有的 `device_id`，并用该设备私钥对 `POST /v1/sessions/nonces` 下发的 nonce 签名（nonce 有效 60 秒，只能使用一次）；验证通过则复用原设备记录与名额，否则注册新设备。
-  - 设备公钥为 Ed25519，只用于两件事：重新登录时证明是同一台设备；批准扫码登录时签名（AUTH-24）。刷新令牌不与公钥绑定。
+  - 其他平台的客户端登录时可以带上已有的 `device_id`，并用该设备私钥对 `POST /v1/sessions/nonces` 下发的 nonce 签名（nonce 有效 60 秒，只能使用一次）；验证通过则复用原设备记录与名额，否则注册新设备。签名对象为 UTF-8 字符串 `akari-device-proof-v1|<device_id>|<nonce>`，`device_id` 取小写、带连字符的 UUID 规范写法。
+  - 设备公钥为 Ed25519，只用于两件事：重新登录时证明是同一台设备；批准扫码登录时签名（AUTH-24）。两种签名对象以不同前缀区分（域分隔），同一把密钥的签名不能在两种用途之间挪用。刷新令牌不与公钥绑定。
+  - 同一账号未吊销的设备，公钥不得重复。
   - 登出（`DELETE /v1/sessions/current`）吊销本会话，并吊销本设备及其代理凭据，释放设备名额。
 - **AUTH-24** 新设备登录的另外两种方式：
   - **设备授权**（RFC 8628，用于电视、路由器等）：用户在用户中心的 `/activate` 页面输入 `user_code`，页面调用 `POST /v1/me/device-authorizations` 批准。
-  - **扫码登录**：新设备调用 `POST /v1/device-links` 取得二维码与 `poll_token`，已登录设备扫码批准。批准前，批准方界面必须显示请求设备的平台、型号、IP 前缀与所在地区，以及一个 2 位校验数字，用户需选出与新设备屏幕上相同的数字，以防钓鱼。
+  - **扫码登录**：新设备调用 `POST /v1/device-links` 取得二维码与 `poll_token`，已登录设备扫码批准。批准前，批准方界面必须显示请求设备的平台、型号、IP 前缀与所在地区，以及一个 2 位校验数字，用户需选出与新设备屏幕上相同的数字，以防钓鱼。非 web 批准方以设备私钥签名，签名对象为 UTF-8 字符串 `akari-device-link-approval-v1|<id>|<check_digits>`。
   
   两种方式中，新设备都以 `POST /v1/oauth/token`（`grant_type=urn:ietf:params:oauth:grant-type:device_code`；扫码登录时把 `poll_token` 作为 `device_code`）轮询取得令牌。签发的令牌受众只能是 `client`，设备计入设备上限。
 
@@ -72,6 +73,8 @@
   - 修改密码、停用二次验证、删除 Passkey、重新生成恢复码；
   - 重置导出令牌；
   - 注销账号。
+
+  重新验证场景的 `mfa_required`：`methods` 只列出二次验证方式（密码总是可用，不列入），账号未启用二次验证时为空数组；不附 `challenge_id`，客户端调用 `POST /v1/me/reauthentications` 后重试原请求。Passkey（M4）实现后，需要 WebAuthn challenge 时才附 `challenge_id`。
 
 ## 10.4 设备与代理凭据
 
