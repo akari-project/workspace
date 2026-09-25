@@ -102,13 +102,19 @@ erDiagram
 
 ## 3.6 M1 补入的列与设置键
 
+settings 键的读取总则：
+- 读取永不因值异常而失败（不返回 500）。每个键的“缺键”取默认值；“值异常”（类型或取值不符合本表）的处理在各行中规定，并记一条 warn 日志，只记键名（CONV-24）。
+- 安全相关的键按关闭方向处理（如注册控制键异常时关闭注册），可用性相关的键按不限制方向处理（如 `min_version` 异常时不限制版本）。
+- 值异常只可能来自直接改库或回滚到旧二进制（管理接口写入时校验）。因值异常导致的有效值变化不写 `config_issued_at`，与 OPS-08 模块屏蔽的例外相同（spec/30 API-11）。
+- 管理接口 `GET /v1/settings` 返回有效值，存储值保留，直到运营者显式修改；这一条约束设置管理接口的实现（backlog M1-09）。
+
 | 位置 | 名称 | 用途 |
 |---|---|---|
 | `sessions` 列 | `absolute_expires_at`（可空） | 会话链的绝对失效时间：客户端会话自首次登录起 90 天，管理会话 12 小时；轮换时继承，为空时以 `expires_at` 为准（spec/10 AUTH-07、AUTH-21）。可空以兼容上一版本二进制（spec/40 DEP-12） |
-| `settings` 键 | `registration_policy` | `"open"`、`"invite_only"`、`"closed"`，默认 `"open"`（spec/10 AUTH-02）；管理接口字段同名 |
-| `settings` 键 | `email_domain_allowlist`、`email_domain_denylist` | 邮箱域名白名单与黑名单，JSON 字符串数组，默认空（AUTH-02）；管理接口字段同名 |
+| `settings` 键 | `registration_policy` | `"open"`、`"invite_only"`、`"closed"`，默认 `"open"`（spec/10 AUTH-02）；管理接口字段同名。缺键按 `"open"`；值存在但不是这三个 JSON 字符串之一（包括非字符串）即为值异常。三个注册控制键（本键与两个邮箱域名名单）中只要有一个值异常，有效注册策略就是 `"closed"`：`/v1/config` 下发 `closed`，注册返回 403 `registration_closed` |
+| `settings` 键 | `email_domain_allowlist`、`email_domain_denylist` | 邮箱域名白名单与黑名单，JSON 字符串数组，默认空（AUTH-02）；管理接口字段同名。缺键按空名单；值不是数组，或数组中有非字符串元素，即为值异常，有效注册策略为 `"closed"`（见 `registration_policy` 行） |
 | `settings` 键 | `smtp` | SMTP 投递设置（spec/13 OPS-01），JSON 对象 `{host, port, username, from_address, tls}`，字段与管理接口的 `settings.smtp` 同名。`tls` 取 `starttls`（缺省，要求 STARTTLS，服务器不支持即投递失败）、`implicit`（隐式 TLS，常用端口 465）、`none`（明文，只用于本机或可信内网中继，例如开发环境的 Mailpit）。保存时拒绝端口 465 与 `starttls` 的组合、`none` 与用户名的组合（`not_allowed`）。不提供跳过证书校验的选项 |
-| `settings` 键 | `min_version` | 客户端最低版本（spec/30 API-03、API-11），JSON 对象，键为 `ClientPlatform`（`ios`、`android`、`windows`、`macos`、`linux`），值为 `x.y.z`，默认 `{}`；管理接口字段同名，更新时可选；平台或版本格式错误返回 `invalid_format`（`errors[].field` 如 `min_version.ios`）；更新时整体替换，提交 `{}` 解除全部限制 |
+| `settings` 键 | `min_version` | 客户端最低版本（spec/30 API-03、API-11），JSON 对象，键为 `ClientPlatform`（`ios`、`android`、`windows`、`macos`、`linux`），值为 `x.y.z`，默认 `{}`；管理接口字段同名，更新时可选；平台或版本格式错误返回 `invalid_format`（`errors[].field` 如 `min_version.ios`）；更新时整体替换，提交 `{}` 解除全部限制。读取时可用性优先：值不是对象时视为 `{}`；某平台的值不是合法 `x.y.z` 时忽略该平台；未知平台键忽略。`min_version` 依据客户端自报的 User-Agent，不是安全控制（API-03），不按关闭方向处理 |
 | `settings` 键 | `features` | 运营模块开关（spec/13 OPS-08），JSON 对象，键为模块名（`announcements`、`articles`、`support`、`referrals`、`diagnostics`），值为布尔。只有值为 JSON `true` 才算开启，`false` 与缺键等价；站点初始化时不写入，缺省即全部关闭。读取永不因此键失败：值不是对象时视为全部关闭，某键的值不是 `true` 时视为关闭，未知键忽略；值异常时记一条 warn 日志，只记键名（CONV-24）。管理接口字段同名，更新时可选；`features` 本身为 `null` 或非对象时返回 `invalid_format`（`errors[].field` 为 `features`）；按键合并：只修改提交的模块，未提交的保持原值（与 `min_version` 的整体替换不同：开关没有“删除”语义，整体替换只会让漏交的模块被意外关闭）；值为 `null` 或非布尔、模块名未知，返回 `invalid_format`（`errors[].field` 如 `features.support`）；实现须按键逐一校验，不得用生成的结构体解码而静默丢弃未知键。开启本二进制未实现的模块返回 `not_allowed`，提交 `false` 始终允许；读取时的有效值见 OPS-08 |
-| `settings` 键 | `config_issued_at` | `/v1/config` 的 `issued_at`（spec/30 API-11），秒精度 RFC 3339 字符串；站点初始化时写入；`features`、`registration_policy`、`min_version` 的有效值实际变化时，在同一事务中写入 `max(当前时刻, 上一次的值 + 1 秒)`，严格递增，规则见 API-11；不在管理接口中暴露 |
+| `settings` 键 | `config_issued_at` | `/v1/config` 的 `issued_at`（spec/30 API-11），秒精度 RFC 3339 字符串，固定为 UTC 形式 `YYYY-MM-DDTHH:MM:SSZ`；站点初始化时写入；值异常（不是该形式的 JSON 字符串，或不是合法的日历时刻）时按缺键处理：`GET /v1/config` 以注入的时钟的当前时刻覆盖（与惰性初始化同一路径，条件为存储值仍是该异常值），记 warn 日志只记键名（CONV-24）；若异常值覆盖了更晚的时刻，已接受更晚文档的客户端会拒绝新文档，直到 `issued_at` 超过该时刻，只有直接改库才会出现，可以接受；写入路径（修改设置时的递增）遇到异常值则失败（fail-closed），不改变；`features`、`registration_policy`、`min_version` 的有效值实际变化时，在同一事务中写入 `max(当前时刻, 上一次的值 + 1 秒)`，严格递增，规则见 API-11；不在管理接口中暴露 |
 | `settings` 键 | `smtp_password_enc` | SMTP 密码密文（CONV-19）；管理接口只返回 `smtp.has_password` |
