@@ -46,3 +46,17 @@
 | d | 两个操作不再接受 `Idempotency-Key` | 不选：批准不是幂等的，需要幂等键；去掉参数有破坏性风险 |
 
 定案：CONV-12 改为 5xx、401、429 不缓存，删除记录，允许同键重试。理由：401 与 429 反映调用方当时的认证状态或配额，不是请求本身的结果；重新验证或等待 `Retry-After` 后，客户端按 UI-09 用原键重试原请求必须成功。同处注明鉴权与限流先于幂等处理，本条覆盖的是处理器内部产生的 401 与 429。契约在 client 文档总述中同步，记入 panel-spec v0.6.0；panel 幂等中间件的修改列为 v0.6.0 发布后的跟进项（backlog M1-01“后续”）。
+
+## protocol-reviewer 审查
+
+结论：修复 1 处阻塞后可以合并。负责人决定 B1 与 S1–S5 在本轮修复，S6 只记录。
+
+| # | 意见 | 处理 |
+|---|---|---|
+| B1（阻塞） | CONV-10 的例外只写了 `/v1/config`，管理接口 `settings.features` 同样使用模块名作键 | spec/02 CONV-10 改为“`/v1/config` 与管理接口 `settings.features` 的键名是模块名” |
+| S1 | CHANGELOG v0.6.0 的语义变更应按先例单列“变更（破坏性）” | 拆为“变更（破坏性）”（批准操作需要重新验证、features 返回有效值、拒绝开启未实现模块、按键合并时未知键报错）与“变更” |
+| S2 | CHANGELOG 的在线执行说明中“回滚下发 `false`”只对已实现屏蔽规则的二进制成立 | 限定为回滚到 panel 跟进 v0.6.0 之后的二进制；跟进之前的实现下发存储值；M1 阶段只有直接改库才会出现 |
+| S3 | 屏蔽导致的变化不写 `issued_at`，会出现 `issued_at` 相同而 `features` 不同的文档 | OPS-08 与 CHANGELOG 安全条目注明这是已知且接受的例外；严格递增不等于“`issued_at` 相同则内容相同” |
+| S4 | CONV-12 “只缓存 2xx 与 4xx”与随后的 401、429 例外字面矛盾 | 改为“缓存 2xx 与 4xx 响应（401、429 除外）；5xx、401、429 不缓存” |
+| S5 | 未规定 `features` 本身为 `null` 或非对象时的错误 | spec/03 3.6 与 console `SettingsUpdate.features` 补：返回 `invalid_format`，`field` 为 `features` |
+| S6 | spec/32 把 `/activate` 页面标为 M1，而 backlog 没有 AUTH-24 的实现任务 | 不改规格；backlog 的 AUTH-24 排期提示注明排期时需与 spec/32 对齐 |
