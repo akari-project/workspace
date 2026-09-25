@@ -26,9 +26,28 @@
 | 通知模板 | `/v1/notification-templates`、`/v1/notification-templates/{id}/preview`（M4） |
 | 邀请返利 | `/v1/referral-earnings`、`/v1/referral-earnings/{id}/review`（M5） |
 | 设置 | `/v1/settings` |
-| 管理员与角色 | `/v1/staff`、`/v1/staff-invitations`、`/v1/roles`（spec/10 AUTH-22） |
-| 审计 | `/v1/audit-logs`（只读）、`/v1/audit-logs/exports`、`/v1/audit-logs/exports/{id}/file` |
+| 管理员与角色 | `/v1/staff`、`/v1/staff-invitations`、`/v1/roles`（spec/10 AUTH-22；全部操作的 `x-permission` 为 `superadmin`） |
+| 审计 | `/v1/audit-logs`（只读）、`/v1/audit-logs/exports`、`/v1/audit-logs/exports/{id}/file`（导出在 backlog M1-02b 实现） |
 | 看板 | `/v1/metrics/overview` |
+
+- **CON-09** 审计日志的 `action` 为 `资源.动词`，资源为单数 `snake_case`，使用对外名称（遵守 spec/30 API-01，例如用 `host` 而不是 `node`）；`target_type` 为 `target_id` 所指对象的类型。管理后台按 `action` 显示本地化文案，遇到未知取值时原样显示。下表随各任务补充，新增取值必须先加入本表。
+
+| `action` | `target_type` | `target_id` | 触发 | 差异（`diff`）要点 |
+|---|---|---|---|---|
+| `session.create` | `account` | 管理员账号 ID | 管理员登录成功（spec/10 AUTH-18） | 无 |
+| `session.delete` | `account` | 管理员账号 ID | 管理员登出 | 无 |
+| `step_up.create` | `account` | 管理员账号 ID | 完成 step-up（AUTH-19） | 无 |
+| `staff.create` | `account` | 新管理员账号 ID | `panel admin create`（AUTH-21）或接受邀请（AUTH-22） | `roles`；接受邀请时 `actor_id` 为接受邀请的账号，另有 `staff_invitation_id`、`inviter_id`、`is_new_account`，重置了凭据时（AUTH-22 第 3 项）另有 `has_credentials_reset: true` |
+| `staff.update` | `account` | 管理员账号 ID | 修改管理员角色 | `roles` 前后值 |
+| `staff.delete` | `account` | 管理员账号 ID | 移除管理员 | `roles` 前值 |
+| `staff_invitation.create` | `staff_invitation` | 邀请 ID | 邀请管理员 | `roles`（不含邮箱，CONV-29） |
+| `staff_invitation.revoke` | `staff_invitation` | 邀请 ID | 撤销邀请；超级管理员失去 `superadmin` 时自动撤销（AUTH-22） | 无 |
+| `role.create` | `role` | 角色名 | 创建自定义角色 | `description`、`permissions` |
+| `role.update` | `role` | 角色名 | 修改自定义角色 | 变化的字段前后值 |
+| `role.delete` | `role` | 角色名 | 删除自定义角色 | `permissions` 前值 |
+| `credit_adjustment.create` | `account` | 账号 ID | 余额调整（spec/12） | `balance_minor` 前后值 |
+| `payment_provider.update` | `payment_provider` | 渠道标识 | 修改支付配置（spec/12） | 变化的字段；`_enc` 只记录“已修改” |
+| `audit_export.create` | `audit_export` | 导出任务 ID | 导出审计日志（M1-02b） | 筛选条件 |
 
 - **CON-06** 生成兑换码批次时，明文码只在创建批次的响应中返回一次，并同时提供一次性的 CSV 下载；此后只能导出使用记录（spec/12 ORD-14）。
 - **CON-07** 影响预览（`impact`）返回受影响的账号数与节点数，用于 spec/32 UI-03 的“将影响 N 名用户”。切换节点内核时，另外返回与目标内核不兼容的入站。

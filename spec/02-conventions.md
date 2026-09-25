@@ -62,7 +62,7 @@
 |---|---|---|
 | `invalid_request` | 400 | 参数错误，`errors` 给出逐项原因 |
 | `unauthenticated` | 401 | 未登录或令牌失效 |
-| `mfa_required` | 401 | 需要二次验证，附 `challenge_id` 与 `methods`（spec/10 AUTH-20） |
+| `mfa_required` | 401 | 需要二次验证，附 `methods`：登录流程另附 `challenge_id`（spec/10 AUTH-20）；重新验证（AUTH-23）与管理接口敏感操作（AUTH-19）不附 `challenge_id`（M4 的 Passkey 需要 WebAuthn challenge 时除外） |
 | `forbidden` | 403 | 无权限 |
 | `email_unverified` | 403 | 邮箱未验证，不能下单 |
 | `registration_closed` | 403 | 注册已关闭，或当前策略要求邀请码而请求未提供 |
