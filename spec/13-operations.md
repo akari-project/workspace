@@ -3,6 +3,14 @@
 适用范围：`internal/notify`、`internal/content`、`internal/support`、`internal/referral`。可关闭的模块默认关闭，由运营者在后台开启。
 
 - **OPS-08** 模块关闭时，其客户端接口返回 404 `not_found`。`/v1/config` 的 `features` 中列出各模块是否开启，前端据此隐藏入口。键名为 `announcements`、`articles`、`support`、`referrals`、`diagnostics`。
+  - 开关保存在 settings 键 `features`，存储格式、缺省值与更新语义见 spec/03 3.6。
+  - 有效值 = 存储值为 `true` **且** 本二进制已实现该模块。`/v1/config` 与管理接口的 `GET /v1/settings` 都返回有效值，避免后台显示“已开启”而客户端看不到。
+  - 管理接口开启本二进制未实现的模块时返回 400 `invalid_request`，`errors[]` 为 `{field: "features.<name>", code: "not_allowed"}`；提交 `false` 始终允许。这一条约束设置管理接口的实现（backlog M1-09）。
+  - 存储中残留的 `true`（例如开启后回滚到未实现该模块的二进制，或直接改库）保留不清除，按键合并也不会清掉它；重新升级后恢复生效。这是有意为之。由屏蔽导致的有效值变化不写 `config_issued_at`（spec/30 API-11）：客户端接受 `issued_at` 相等的文档，新文档仍会被接受。这是已知且接受的例外：可能出现 `issued_at` 相同而 `features` 不同的两份文档，客户端都会接受；`issued_at` 严格递增只针对设置修改，不保证“`issued_at` 相同则内容相同”。
+  - 管理后台随控制面二进制构建（spec/40），按构建时的模块清单把未实现的模块置灰；以服务端返回的 `not_allowed` 为准。
+  - 管理接口不受模块开关影响：模块关闭时，运营者仍可在后台管理其内容（如先写好公告与文章再开启）。
+  - 关闭 `referrals` 时账号邀请码仍可用于注册，但不产生返利（spec/10 AUTH-02）。
+  - `diagnostics`（`POST /v1/diagnostics`，spec/30）尚未排期，实现前不可开启。
 
 ## 13.1 通知（不可关闭）
 

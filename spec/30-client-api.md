@@ -97,10 +97,15 @@
   - `min_version`：settings 键 `min_version`（spec/03 3.6），默认 `{}`。不应高于该平台 `GET /v1/releases/latest` 已发布的版本；M1 只在后台界面提示，不做校验。
   - `api_endpoints`：第一项为主地址，取部署配置 `ui.portal.api_base_url`，未配置时取用户中心的公开地址（`ui.portal.public_url` 去掉末尾的 `/`）；其后为部署配置 `client.api_endpoints` 中的备用地址（去重，保持顺序）；主地址也未配置时只下发备用地址。每一项的含义与 DEP-04 的 `api_base_url` 相同：接口根地址，不含 `/v1` 与末尾的 `/`，可以带路径前缀。备用地址不放在 settings 与管理接口中：修改它等于把全部客户端引到另一个域名，与更换域名、证书一样由部署者修改配置。
   - `announcement_version`：单调不减的 int64，生效中的公告集合可能变化时必须增大。公告模块实现前恒为 0；推导方式由公告任务定义，不读取 `updated_at`（CONV-27）。
-  - `issued_at`：取 settings 键 `config_issued_at`（缺省时取站点初始化时刻）。修改 `features`、`registration_policy`、`min_version` 时，在同一事务中用注入的时钟写入（CONV-04、CONV-27）；站点初始化时写入。公告模块实现后取它与公告版本对应时刻中的较大值。
+  - `features`：各模块的有效值（spec/13 OPS-08），五个键都下发；存储格式与缺省见 spec/03 3.6。
+  - `issued_at`：取 settings 键 `config_issued_at`，秒精度 RFC 3339。
+    - 正常情况由站点初始化写入；键缺失时由首次请求用注入的时钟惰性初始化，这只是兜底（并发时先写入者生效）。
+    - `features`、`registration_policy`、`min_version` 的**有效值实际变化**时，在同一事务中写入；提交与当前相同的值不写。由 OPS-08 的模块屏蔽导致的有效值变化不写。
+    - 写入值为 `max(当前时刻, 上一次的值 + 1 秒)`，当前时刻取注入的时钟（CONV-04、CONV-27），保证严格递增：同一秒内的两次修改、副本间的时钟偏差都不会得到相同或更早的值。读取上一次的值与写入在同一事务中完成，并锁住 `config_issued_at` 行（`SELECT … FOR UPDATE`，或一条带 `GREATEST` 的 `UPDATE`），否则并发的两次修改仍可能得到相同的值。
+    - 公告模块实现后取它与公告版本对应时刻中的较大值。
   - 签名：Ed25519 签名是确定性的，相同 payload 在各副本得到相同的签名文档。ETag 为签名文档 JCS 字节的 SHA-256（强 ETag，CONV-13），不需要共享缓存；进程内可以按输入缓存签名结果。签名私钥见 CONV-30 的 `PANEL_CONFIG_KEY`，`key_id` 以十进制字符串输出。
   - 响应带 `Cache-Control: no-cache`，由 ETag 返回 304。
-  - 客户端只接受 `issued_at` 不早于上次已接受值的文档（防回滚），否则继续使用旧文档。
+  - 客户端只接受 `issued_at` 不早于上次已接受值的文档（防回滚），否则继续使用旧文档。同一文档重复获取时 `issued_at` 相等，必须接受。
 - **API-04** 限流默认值（可配置），超限返回 429 并带 `Retry-After`：
 
 | 对象 | 默认值 |
