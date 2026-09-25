@@ -8,7 +8,7 @@
 
 | 分组 | 表 | 规格 |
 |---|---|---|
-| 账号与认证 | `accounts`、`roles`、`account_roles`、`staff_invitations`、`mfa_totp`、`mfa_webauthn`、`verification_codes`、`sessions`、`devices` | spec/10 |
+| 账号与认证 | `accounts`、`roles`、`account_roles`、`staff_invitations`、`staff_invitation_roles`、`mfa_totp`、`mfa_webauthn`、`verification_codes`、`sessions`、`devices` | spec/10 |
 | 凭据与导出 | `proxy_credentials`（`secret_enc` 的明文为 16 字节原始 UUIDv4，spec/21 AGT-15；00001 中的列注释“UUID / 密码等”已过时，由后续迁移以 `COMMENT ON COLUMN` 更正，见 backlog M1-03）、`export_tokens`（`token_hash` 与 `token_enc`） | spec/10、spec/23 |
 | 节点 | `kernels`、`kernel_protocols`、`kernel_transports`、`machines`、`nodes`（含 `last_report_seq`）、`location_groups`、`node_group_members`、`inbounds`（非敏感配置在 `settings`，私钥在 `secrets_enc`）、`node_routes` | spec/20、spec/21 |
 | 套餐与权益 | `plans`、`plan_groups`、`plan_prices`、`addon_prices`、`entitlements`、`entitlement_events`、`addons`、`usage_cycles` | spec/11 |
@@ -118,3 +118,7 @@ settings 键的读取总则：
 | `settings` 键 | `features` | 运营模块开关（spec/13 OPS-08），JSON 对象，键为模块名（`announcements`、`articles`、`support`、`referrals`、`diagnostics`），值为布尔。只有值为 JSON `true` 才算开启，`false` 与缺键等价；站点初始化时不写入，缺省即全部关闭。读取永不因此键失败：值不是对象时视为全部关闭，某键的值不是 `true` 时视为关闭，未知键忽略；值异常时记一条 warn 日志，只记键名（CONV-24）。管理接口字段同名，更新时可选；`features` 本身为 `null` 或非对象时返回 `invalid_format`（`errors[].field` 为 `features`）；按键合并：只修改提交的模块，未提交的保持原值（与 `min_version` 的整体替换不同：开关没有“删除”语义，整体替换只会让漏交的模块被意外关闭）；值为 `null` 或非布尔、模块名未知，返回 `invalid_format`（`errors[].field` 如 `features.support`）；实现须按键逐一校验，不得用生成的结构体解码而静默丢弃未知键。开启本二进制未实现的模块返回 `not_allowed`，提交 `false` 始终允许；读取时的有效值见 OPS-08 |
 | `settings` 键 | `config_issued_at` | `/v1/config` 的 `issued_at`（spec/30 API-11），秒精度 RFC 3339 字符串，固定为 UTC 形式 `YYYY-MM-DDTHH:MM:SSZ`；站点初始化时写入；值异常（不是该形式的 JSON 字符串，或不是合法的日历时刻）时按缺键处理：`GET /v1/config` 以注入的时钟的当前时刻覆盖（与惰性初始化同一路径，条件为存储值仍是该异常值），记 warn 日志只记键名（CONV-24）；若异常值覆盖了更晚的时刻，已接受更晚文档的客户端会拒绝新文档，直到 `issued_at` 超过该时刻，只有直接改库才会出现，可以接受；写入路径（修改设置时的递增）遇到异常值则失败（fail-closed），不改变；`features`、`registration_policy`、`min_version` 的有效值实际变化时，在同一事务中写入 `max(当前时刻, 上一次的值 + 1 秒)`，严格递增，规则见 API-11；不在管理接口中暴露 |
 | `settings` 键 | `smtp_password_enc` | SMTP 密码密文（CONV-19）；管理接口只返回 `smtp.has_password` |
+| `roles` 列 | `description`（`text`，可空） | 自定义角色的描述，管理接口 `Role.description`（spec/10 AUTH-22）。内置角色为空，界面按角色名本地化 |
+| 表 | `staff_invitation_roles`（`staff_invitation_id`、`role`、`created_at`，主键为两列） | 一次邀请授予的角色，可以多个（AUTH-22）。`staff_invitation_id` 引用 `staff_invitations(id)` `ON DELETE CASCADE`；`role` 引用 `roles(name)` `ON DELETE CASCADE`，使已接受、已撤销、已过期的邀请不阻止删除角色；仍被 `pending` 邀请引用的角色由应用层拒绝删除（409 `invalid_state`）。纯关联表，没有 `updated_at`（CONV-17） |
+| `staff_invitations` 列 | `role`（废弃） | 由 `staff_invitation_roles` 取代。按 spec/40 DEP-12 分两步：本次迁移去掉 `NOT NULL`，应用不再读写；下一个小版本的迁移删除该列 |
+| `notification_outbox` 列 | `staff_invitation_id`（可空） | 邀请邮件的收件人（AUTH-22）：引用 `staff_invitations(id)` `ON DELETE CASCADE`，投递时从 `staff_invitations.email` 读取收件地址，outbox 不保存邮箱（CONV-29）。CHECK `num_nonnulls(account_id, staff_invitation_id) <= 1`。该表已有数据，索引以单独的迁移 `CREATE INDEX CONCURRENTLY` 建立并标记 `-- +goose NO TRANSACTION`（CONV-21）。取出待投递消息的查询改为分别 `LEFT JOIN` `accounts` 与 `staff_invitations`，收件地址取两者之一 |
