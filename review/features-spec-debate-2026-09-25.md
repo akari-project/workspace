@@ -25,3 +25,24 @@
 - 本次为规格与契约描述的补全，不涉及数据库迁移与 proto。
 - panel 现有实现（缺省全部关闭、忽略未知键）在 M1 阶段的对外结果不变：五个模块都未实现，屏蔽后恒为 `false`。容错解码、屏蔽、`issued_at` 严格递增与测试作为 panel 跟进项，在负责人为 panel-spec 打 v0.6.0 tag 后进行（backlog M1-01“后续”）。
 - 设置管理接口尚未实现（M1-09），F4、F6 的写入规则在该任务中首次实现，无兼容问题。
+
+## C2 定案
+
+`review/m1-01-followups-debate-2026-09-24.md` 中留给负责人的 C2（批准设备授权与扫码登录是否列入 AUTH-23），负责人已定案：**列入**。该记录已提交，不修改，定案记录于此。
+
+- 规格：spec/10 AUTH-23 的覆盖范围加入“批准设备授权与批准扫码登录（AUTH-24）”；AUTH-24 注明批准方需要重新验证，理由是批准会为账号新增一个 90 天有效、不随批准方会话吊销的会话。被批准的新设备登录不算重新验证，不变。
+- 契约：client `approveDeviceAuthorization`（`POST /v1/me/device-authorizations`）与 `approveDeviceLink`（`POST /v1/device-links/{id}/approve`）的 401 改为引用 `MfaRequired`，与 `disableTotp`、`startTotpEnrollment` 一致；并入 panel-spec v0.6.0。
+- 迁移：两个接口尚未实现，也没有 backlog 条目，无兼容影响；backlog M1-01“后续”提示负责人排期。
+
+### 未决问题：与 CONV-12 幂等缓存的冲突
+
+`spec-owner` 核实契约时发现：这两个操作接受 `Idempotency-Key`（其余七个需要重新验证的操作都不接受）。CONV-12 缓存 4xx 响应（panel `internal/idempotency` 也只跳过 5xx），处理器返回的 401 `mfa_required` 会被缓存；客户端按 UI-09 重新验证后用同一键重试，24 小时内都会得到缓存的 401。候选做法：
+
+| # | 做法 | 代价 |
+|---|---|---|
+| a | CONV-12 增加例外：401 不缓存，与 5xx 相同处理 | 改 spec/02 与幂等中间件；通用，契约不破坏 |
+| b | 重新验证检查放在幂等中间件之前 | 规格需规定中间件顺序 |
+| c | 客户端重新验证后换新键重试 | 与“重试原请求”相反，易实现错 |
+| d | 两个操作不再接受 `Idempotency-Key` | 去掉可选参数；重复批准返回 409 `invalid_state` |
+
+`spec-owner` 倾向 (a)。待负责人决定；决定前本版本契约只改 401 引用，不改幂等描述。
