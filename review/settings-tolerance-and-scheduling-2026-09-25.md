@@ -13,6 +13,7 @@
 | N2 | — | 设备授权与扫码登录请求的存储位置（Valkey 或表）未定义，迁移中没有相关表；`device_code`、`poll_token` 是令牌（CONV-20） | 本轮不定；写入 M1-03b“开工前先经 spec-change 定案”，参考建议只存 SHA-256 |
 | N3 | — | API-04 没有 `user_code` 输入的限流（RFC 8628 §5.1）；契约只写“多次失败后作废”，次数未定；候选数字只有 3 个 | 本轮不定；写入 M1-03b 前置，参考建议一次错误即作废 |
 | N4 | — | 契约示例 `qr_content` 为 `…/link/{id}`，与 API-02 要避开的旧面板导入路径 `/link/{token}` 雷同；spec/32 未定义扫码批准页路由，也未规定非 web 批准方如何从 `qr_content` 解析 `id` | 本轮不定（避免产生契约版本）；写入 M1-03b 前置，参考建议路由避开 `/link/` |
+| N6 | security-reviewer（panel 实现审查 S2）：3.6 读取总则要求读取不因值异常失败，但 `config_issued_at` 行未规定异常取值，panel `issuedAt()` 遇到 `null` 等返回 500 | — | 值异常（不是 `YYYY-MM-DDTHH:MM:SSZ` 形式的 JSON 字符串，或不是合法日历时刻）按缺键处理：`GET /v1/config` 以当前时刻条件覆盖（与惰性初始化同一路径），warn 只记键名；异常值若覆盖了更晚的时刻，客户端会暂时拒绝新文档，只有直接改库才会出现，可以接受；写入路径的递增保持 fail-closed（spec/03 3.6、API-11） |
 | N5 | — | 未配置 GeoIP 时 `region` 为 null（契约 `RequestingDevice`），AUTH-24 却写“必须显示所在地区” | 本轮修改措辞：地区有则显示（spec/10 AUTH-24） |
 
 ## G1 的最终规则
