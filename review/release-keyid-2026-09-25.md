@@ -19,6 +19,12 @@
 1. 规格：CONV-30 增加客户端安装包发布签名：固定 Ed25519 密钥，由发布流程离线保管，不进入控制面的环境变量与数据库；`key_id` 为 1–255 的十进制；客户端内置当前与下一把公钥，与 Agent 发布相同。spec/30 接口表 `GET /v1/releases/latest` 一行引用 CONV-30。签名输入推迟到自研客户端立项，记入 `backlog/M5.md`“1.0 之后（随自研客户端）”。
 2. 契约：panel-spec v0.6.1，`Release.key_id` 增加描述与 `SignedConfig.key_id` 相同的模式，示例改为 `'1'`；`Release.signature` 增加描述，示例改为与 Ed25519 签名等长的值；两份 OpenAPI 的 `info.version` 改为 0.6.1。
 
+## 评审后补充（protocol-reviewer 通过，无阻塞问题）
+
+- CONV-30 的存放方式同时更正了 Agent 发布签名：此前清单写“存放方式与主密钥相同”，意味着环境变量，与 DEP-09 的固定密钥由发布流程签名不符；现在两种发布签名都写明离线保管。
+- spec/40 DEP-10 的运营者离线备份要求收窄为主密钥与控制面的签名私钥（CONV-30），发布签名密钥由发布流程保管，不由运营者备份。
+- 余留：panel-spec `messages.proto` 中 `AgentUpgrade.key_id` 的注释应写明取值 1–255，只改注释，随下一个 panel-spec 版本（`backlog/M1.md` M1-01 后续）。
+
 ## 验证
 
 - panel-spec `make ci` 通过：Redocly lint、`buf breaking` 与 oasdiff 对比 v0.6.0 均无破坏性变更，生成代码一致。
