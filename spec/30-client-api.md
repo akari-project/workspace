@@ -25,7 +25,7 @@
 | 接口 | 说明 |
 |---|---|
 | `GET /v1/config` | 客户端启动配置：最低版本、公告版本、功能开关（`features`，spec/13 OPS-08）、注册策略（可选字段 `registration_policy`，缺省时前端按 `open` 处理，以服务端校验为准；不下发域名名单）、接口地址（`api_endpoints`，见 API-11）；用 Ed25519 签名，签名对象为 `payload` 按 RFC 8785（JCS）规范化后的字节，带 `key_id`，公钥内置于客户端（CONV-30）；生成规则见 API-11 |
-| `GET /v1/releases/latest?platform=` | 新版本信息与安装包签名 |
+| `GET /v1/releases/latest?platform=` | 新版本信息与安装包签名：Ed25519 签名，带 `key_id`（1–255 的十进制字符串），密钥与换钥规则见 CONV-30 |
 | `GET /v1/assets/{digest}` | 按内容寻址的规则集等公共资源，可以由 CDN 缓存 |
 | `GET /v1/plans` | 在售套餐与价格，以及加购项价格 |
 | `GET /v1/locations` | 可用地区、负载提示、倍率（`usage_multiplier`） |
