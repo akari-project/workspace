@@ -34,15 +34,15 @@
 - 契约：client `approveDeviceAuthorization`（`POST /v1/me/device-authorizations`）与 `approveDeviceLink`（`POST /v1/device-links/{id}/approve`）的 401 改为引用 `MfaRequired`，与 `disableTotp`、`startTotpEnrollment` 一致；并入 panel-spec v0.6.0。
 - 迁移：两个接口尚未实现，也没有 backlog 条目，无兼容影响；backlog M1-01“后续”提示负责人排期。
 
-### 未决问题：与 CONV-12 幂等缓存的冲突
+### 与 CONV-12 幂等缓存的冲突（已定案）
 
-`spec-owner` 核实契约时发现：这两个操作接受 `Idempotency-Key`（其余七个需要重新验证的操作都不接受）。CONV-12 缓存 4xx 响应（panel `internal/idempotency` 也只跳过 5xx），处理器返回的 401 `mfa_required` 会被缓存；客户端按 UI-09 重新验证后用同一键重试，24 小时内都会得到缓存的 401。候选做法：
+`spec-owner` 核实契约时发现：这两个操作接受 `Idempotency-Key`（其余七个需要重新验证的操作都不接受）。CONV-12 原规定缓存 2xx 与 4xx，处理器返回的 401 `mfa_required` 会被缓存；客户端按 UI-09 重新验证后用同一键重试，24 小时内都会得到缓存的 401，批准永远无法成功。lead 核实：panel `internal/clientapi` 中认证（401 `unauthenticated`）与限流（429）在幂等中间件之前执行，不进入记录；`internal/idempotency` 只跳过 5xx。因此会被缓存的是处理器返回的 401 `mfa_required`，以及今后可能由处理器返回的 401 或 429。
 
-| # | 做法 | 代价 |
+| # | 做法 | 结论 |
 |---|---|---|
-| a | CONV-12 增加例外：401 不缓存，与 5xx 相同处理 | 改 spec/02 与幂等中间件；通用，契约不破坏 |
-| b | 重新验证检查放在幂等中间件之前 | 规格需规定中间件顺序 |
-| c | 客户端重新验证后换新键重试 | 与“重试原请求”相反，易实现错 |
-| d | 两个操作不再接受 `Idempotency-Key` | 去掉可选参数；重复批准返回 409 `invalid_state` |
+| a | CONV-12 增加例外：401 与 429 同 5xx 一样不缓存 | **采纳**：通用规则，契约不破坏，实现只改幂等中间件 |
+| b | 重新验证检查放在幂等中间件之前 | 不选：依赖实现中的执行顺序，不能作为规格 |
+| c | 客户端重新验证后换新键重试 | 不选：与“重试原请求”相反，客户端容易实现错 |
+| d | 两个操作不再接受 `Idempotency-Key` | 不选：批准不是幂等的，需要幂等键；去掉参数有破坏性风险 |
 
-`spec-owner` 倾向 (a)。待负责人决定；决定前本版本契约只改 401 引用，不改幂等描述。
+定案：CONV-12 改为 5xx、401、429 不缓存，删除记录，允许同键重试。理由：401 与 429 反映调用方当时的认证状态或配额，不是请求本身的结果；重新验证或等待 `Retry-After` 后，客户端按 UI-09 用原键重试原请求必须成功。同处注明鉴权与限流先于幂等处理，本条覆盖的是处理器内部产生的 401 与 429。契约在 client 文档总述中同步，记入 panel-spec v0.6.0；panel 幂等中间件的修改列为 v0.6.0 发布后的跟进项（backlog M1-01“后续”）。
