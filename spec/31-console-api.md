@@ -37,7 +37,7 @@
 | `session.create` | `account` | 管理员账号 ID | 管理员登录成功（spec/10 AUTH-18） | 无 |
 | `session.delete` | `account` | 管理员账号 ID | 管理员登出 | 无 |
 | `step_up.create` | `account` | 管理员账号 ID | 完成 step-up（AUTH-19） | 无 |
-| `staff.create` | `account` | 新管理员账号 ID | `panel admin create`（AUTH-21）或接受邀请（AUTH-22） | `roles`；接受邀请时另有 `staff_invitation_id`、`is_new_account` |
+| `staff.create` | `account` | 新管理员账号 ID | `panel admin create`（AUTH-21）或接受邀请（AUTH-22） | `roles`；接受邀请时 `actor_id` 为接受邀请的账号，另有 `staff_invitation_id`、`inviter_id`、`is_new_account`，重置了凭据时（AUTH-22 第 3 项）另有 `has_credentials_reset: true` |
 | `staff.update` | `account` | 管理员账号 ID | 修改管理员角色 | `roles` 前后值 |
 | `staff.delete` | `account` | 管理员账号 ID | 移除管理员 | `roles` 前值 |
 | `staff_invitation.create` | `staff_invitation` | 邀请 ID | 邀请管理员 | `roles`（不含邮箱，CONV-29） |

@@ -130,8 +130,11 @@
   - 管理员、邀请与角色的全部操作（包括只读操作）只允许 `superadmin`，管理接口中这些操作的 `x-permission` 为 `superadmin`。`staff.*` 保留在权限目录中，但只通过 superadmin 的 `*` 持有，因此“不能授予超出自身的权限”对这些操作自然成立。系统中至少保留一个 `superadmin`，移除最后一个时返回 409 `invalid_state`。
   - 删除自定义角色时，内置角色、仍有管理员持有的角色、仍被 `pending` 邀请引用的角色，返回 409 `invalid_state`。
   - 手动标记支付只允许 `superadmin`，任何角色都不能被授予该操作（spec/12 ORD-12）。
+  - 目标账号持有任何管理员角色时，以下账号操作只允许 `superadmin`，否则返回 403 `forbidden`：暂停账号（`suspendAccount`）、重置密码（`resetAccountPassword`）、吊销会话（`revokeAccountSessions`、`revokeAccountSession`）。暂停最后一个 `superadmin` 返回 409 `invalid_state`。管理员删除账号（`deleteAccount`）对持有管理员角色的账号一律返回 409 `invalid_state`（AUTH-05），不另作限制。原因：这些操作的 `x-permission` 为 `accounts.adjust`，operator 也持有，不加限制时可以借此锁定或接管其他管理员。实现归 backlog M1-09 的账号管理接口。
   - 账号获得或失去管理员角色时（接受邀请、修改角色、移除管理员），在同一事务中向该账号发送安全类通知（模板 `staff_roles_changed`，spec/13 OPS-04）。
   - 新管理员通过一次性邮件邀请加入，首次登录时必须绑定 TOTP（AUTH-21）。一次邀请可以指定多个角色。
+    - `pending` 邀请指 `accepted_at IS NULL AND revoked_at IS NULL AND expires_at > 当前时刻`（当前时刻取注入的时钟，CONV-04）；本条中的“`pending`”均按此判断，接口中的 `status` 同样由此计算。
+    - 邮箱按小写归一化后比较与保存（与 AUTH-01 相同），包括查重、查找被邀请邮箱的账号与投递。同一邮箱的并发创建邀请按 `lower(email)` 串行化（事务级 advisory lock 或等价的行锁），保证同一邮箱至多一条 `pending` 邀请。
     - 邀请令牌为 32 字节 CSPRNG 随机值（base64url），只存 SHA-256（`staff_invitations.token_hash`，CONV-20）；72 小时有效，`expires_at` 由注入的时钟写入（CONV-27）。
     - 链接为管理后台的公开地址加 `accept-invitation#token=<令牌>`，令牌放在 URL 片段中（与 AUTH-04 相同，不进入访问日志与 Referer）。公开地址取部署配置 `ui.admin.public_url`；未配置时取唯一的 `hosts` 与 `path_prefix`，与找回密码链接的规则相同，不取自请求的 Host。
     - 创建邀请的响应不返回令牌与链接，只通过邮件送达。
@@ -140,11 +143,11 @@
     - 超级管理员失去 `superadmin` 角色时（修改角色或移除管理员），在同一事务中撤销其发出的全部 `pending` 邀请，每条写一条审计 `staff_invitation.revoke`。
   - 接受邀请（`POST /v1/staff-invitations/acceptance`，请求体 `{token, password?}`）：
     - 令牌不存在、已被接受或已撤销，返回 400，`errors[]` 为 `{field: token, code: invalid_code}`；已过期为 `{field: token, code: expired}`。
-    - 邀请行加锁，在同一事务中写 `accepted_at` 与 `account_id`、授予邀请中的全部角色、写审计 `staff.create`，令牌因此只能使用一次。
+    - 邀请行加锁，在同一事务中写 `accepted_at` 与 `account_id`、授予邀请中的全部角色、发送 `staff_roles_changed` 通知、写审计 `staff.create`，令牌因此只能使用一次。审计的 `actor_id` 为接受邀请的账号，`diff` 含 `roles`、`staff_invitation_id`、`inviter_id`、`is_new_account`，第 3 项另含 `has_credentials_reset: true`。
     - 按被邀请邮箱的账号状态处理：
-      1. 没有账号：`password` 必填，缺少时返回 400，`errors[]` 为 `{field: password, code: required}`；密码规则同 AUTH-01。创建账号，邮箱视为已验证（写入 `email_verified_at`），与 AUTH-21 命令行创建管理员一样生成共用代理凭据并在同一事务中写 `credential.changed`。
-      2. 账号存在且邮箱已验证：忽略 `password`，沿用原密码。持有邮件中的链接证明当前控制该邮箱；登录管理接口仍需要该账号的密码与 TOTP。
-      3. 账号存在但邮箱未验证：`password` 必填（缺少时同第 1 项）；替换密码，删除该账号的 TOTP 与 Passkey（包括待确认的绑定），吊销该账号的全部会话，写入 `email_verified_at`。原因：未验证邮箱的账号可以登录（AUTH-03），可能是他人抢先用该邮箱注册并设置了密码与二次验证；沿用原凭据会让注册者取得管理员身份。
+      1. 没有账号：`password` 必填，缺少时返回 400，`errors[]` 为 `{field: password, code: required}`；密码规则同 AUTH-01。创建账号，邮箱视为已验证（写入 `email_verified_at`），与 AUTH-21 命令行创建管理员一样生成共用代理凭据并在同一事务中写 `credential.changed`。注册策略与邮箱域名名单（AUTH-02）不适用：邮箱由超级管理员指定，不是自助注册。
+      2. 账号存在且邮箱已验证：忽略 `password`，沿用原密码。持有邮件中的链接证明当前控制该邮箱；登录管理接口仍需要该账号的密码与 TOTP。已知残留风险（M1 接受）：该账号的客户端密码若已泄露，而账号尚未绑定 TOTP，持有密码的人可以抢先完成首次管理员登录并绑定自己的 TOTP（AUTH-21）；`staff_roles_changed` 邮件会提醒真正的邮箱所有者。后续把首次绑定与邀请令牌绑定（backlog M1-02 范围之外）。
+      3. 账号存在但邮箱未验证：`password` 必填（缺少时同第 1 项）；在同一事务中重置该账号的全部凭据：替换密码；删除 TOTP 与 Passkey（包括待确认的绑定）；吊销全部会话；吊销全部设备及其代理凭据，轮换共用凭据，每条凭据变化写 `credential.changed`（AUTH-13、AUTH-15）；吊销导出令牌（旧导入链接失效，AUTH-16）；作废尚未使用的验证码与找回密码令牌；写入 `email_verified_at`。原因：未验证邮箱的账号可以登录（AUTH-03），可能是他人抢先用该邮箱注册并设置了密码与二次验证；沿用原凭据会让注册者取得管理员身份。
       4. 账号为 `suspended`、`deleting` 或 `deleted`，或已经是管理员：返回 409 `invalid_state`。
 - **AUTH-21** 管理员登录与会话：
   - 管理接口只接受受众为 `console` 的访问令牌。这种令牌只能由管理接口域名下的 `POST /v1/sessions` 签发，且本次登录必须完成二次验证（令牌带 `amr` 声明）。客户端接口签发的令牌、设备授权与扫码登录签发的令牌，都不能访问管理接口。
@@ -172,8 +175,8 @@
   - 由 `POST /v1/staff/me/step-up` 签发，有效期 5 分钟（注入的时钟，CONV-04）；有效期内可以用于多个敏感操作。
   - step-up 只接受 TOTP（M4 起另有 Passkey），恢复码不能用于 step-up；登录时完成的二次验证不签发 `Mfa-Assertion`。
   - 绑定账号与签发时的会话链（AUTH-07）：只在同一账号、同一会话链的请求中有效，会话链被吊销（登出、角色或二次验证变化，AUTH-21）后立即失效。它的受众与访问令牌不同，两者不能互相替代。不写入日志与审计（CONV-24）。
-  - 缺少、过期、签名无效或会话链不符，一律返回 401 `mfa_required`：`methods` 只列出 step-up 可用的方式（M1 为 `["totp"]`），不含 `recovery_code`，不附 `challenge_id`。管理后台完成 step-up 后重试原请求（spec/32 UI-09）。
-  - 校验顺序：认证 → 权限（403）→ 参数与原因（400）→ `Mfa-Assertion`（401）→ 业务处理。返回 401 之前不产生副作用（CONV-12）。
+  - 缺少、过期、签名无效或会话链不符，一律返回 401 `mfa_required`（与 AUTH-20 登录流程的 `mfa_required` 不同）：`methods` 只列出 step-up 可用的方式（M1 为 `["totp"]`），不含 `recovery_code`，不附 `challenge_id`。管理后台完成 step-up 后重试原请求（spec/32 UI-09）。
+  - 校验顺序：认证 → 权限（403）→ 参数、原因与 `If-Match` 是否存在（400、428）→ `Mfa-Assertion`（401）→ 业务处理（含 ETag 不一致的 409 `conflict` 与状态检查）。返回 401 之前不产生副作用（CONV-12）。
 
   敏感操作包括：手动标记支付、余额调整、退款、切换节点内核、修改支付配置、应用到现有用户、从套餐移除线路组、吊销节点密钥、管理员与角色变更、重置用户密码、管理员删除账号、导出审计日志或用户数据（`/v1/audit-logs/exports`、`/v1/accounts/{id}/data-exports`）。执行者还必须拥有该操作对应的权限（AUTH-17）。
 - **AUTH-25** 账号暂停（管理员操作）：
