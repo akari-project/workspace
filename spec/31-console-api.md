@@ -8,10 +8,13 @@
 - **CON-08** 权限目录之外的读操作按以下对应：看板 `/v1/metrics/overview` 用 `orders.read`；内核矩阵 `/v1/kernels` 用 `hosts.*`；返利列表用 `accounts.read`，返利审核用 `credits.adjust`。
 - **CON-04** 对外把节点称为 `hosts`，与客户端接口面向用户的 `locations` 区分。
 - **CON-05** 下表按资源族列出路径。凡是集合资源，都隐含 `GET` 集合、`POST` 创建，以及 `/{id}` 的 `GET`、`PATCH`、`DELETE`，除非标注为只读。以下集合只提供有意义的操作：会话与设备（查看、吊销）、接入令牌（签发）、订单（查看，以及退款与手动标记支付子资源）、权益（查看；修改只经 `entitlement-adjustments`，spec/11 BIL-03）、应用记录、管理员（只能经邀请加入）、邀请、返利。可修改的单个资源遵守 CONV-13 与 CONV-28（ETag 与 `If-Match`）。
+  - ETag 只覆盖可编辑的状态，由资源的版本列（spec/03 3.6）或 `updated_at` 生成；套餐与线路组用版本列，价格行用 `updated_at`。内嵌的子集合（如套餐的在售价格行与线路组关联）属于可编辑状态：子资源变化时在同一事务中把父资源的版本加 1。
+  - `LocationGroup.host_count` 是成员数，只随增减成员变化，而增减成员使线路组版本加 1；节点状态变化不改变该字段，也不改变 ETag。
+  - 派生计数（如 `Plan.active_entitlement_count`、`LocationGroup.plan_ids`）不参与 ETag：它们随购买或节点变化而变，若参与，编辑时会反复遇到 409 `conflict`。因此 304 响应中的派生计数可能过时，界面需要最新值时不带 `If-None-Match` 重新读取。
 
 | 资源 | 路径 |
 |---|---|
-| 认证 | `POST /v1/sessions`（本次登录必须完成二次验证）、`DELETE /v1/sessions/current`、`POST /v1/oauth/token`（刷新）、`POST /v1/staff/me/step-up`（取得 `Mfa-Assertion`）、`GET /v1/staff/me`（当前管理员与权限）、`POST /v1/staff-invitations/acceptance`（接受邀请） |
+| 认证 | `POST /v1/sessions`（本次登录必须完成二次验证）、`DELETE /v1/sessions/current`、`POST /v1/oauth/token`（刷新）、`POST /v1/staff/me/step-up`（取得 `Mfa-Assertion`）、`GET /v1/staff/me`（当前管理员、权限与站点结算货币 `site_currency`，未初始化时为 `null`，CONV-08）、`POST /v1/staff-invitations/acceptance`（接受邀请） |
 | 账号 | `/v1/accounts`、`/v1/accounts/{id}`、`/v1/accounts/{id}/suspension`、`/v1/accounts/{id}/sessions`、`/v1/accounts/{id}/devices`、`/v1/accounts/{id}/password-resets`、`/v1/accounts/{id}/data-exports`（导出用户数据，敏感操作） |
 | 权益 | `/v1/accounts/{id}/entitlements`、`/v1/accounts/{id}/entitlement-adjustments`、`/v1/accounts/{id}/entitlement-events`（只读） |
 | 余额 | `/v1/accounts/{id}/credits`、`/v1/accounts/{id}/credit-entries`（只读）、`/v1/accounts/{id}/credit-adjustments` |
@@ -48,6 +51,19 @@
 | `credit_adjustment.create` | `account` | 账号 ID | 余额调整（spec/12） | `balance_minor` 前后值 |
 | `payment_provider.update` | `payment_provider` | 渠道标识 | 修改支付配置（spec/12） | 变化的字段；`_enc` 只记录“已修改” |
 | `audit_export.create` | `audit_export` | 导出任务 ID | 导出审计日志（M1-02b） | 筛选条件 |
+| `plan.create` | `plan` | 套餐 ID | 创建套餐（M1-04） | 全部字段，含 `location_group_ids` |
+| `plan.update` | `plan` | 套餐 ID | 修改套餐 | 变化的字段前后值 |
+| `plan.delete` | `plan` | 套餐 ID | 删除套餐（spec/11 BIL-26） | `name`、`kind`、`tier` 前值 |
+| `plan_price.create` | `plan_price` | 价格行 ID | 新建价格行（BIL-01） | `plan_id`、`period`、`period_days`、`amount_minor`、`currency`、`discontinued_price_id`（同一周期旧行被停售时为其 ID，否则为 `null`；只写这一条审计） |
+| `plan_price.discontinue` | `plan_price` | 价格行 ID | 停售价格行 | `plan_id`、`period`、`amount_minor` |
+| `plan_location_group.create` | `plan` | 套餐 ID | 为套餐添加线路组（BIL-04） | `location_group_id` |
+| `plan_location_group.delete` | `plan` | 套餐 ID | 从套餐移除线路组（敏感操作，带 `reason_id`） | `location_group_id` |
+| `plan_rollout.create` | `plan` | 套餐 ID | 应用到现有用户（BIL-02，M1-05；敏感操作，带 `reason_id`） | `plan_rollout_id`、`fields`、`affected_account_count` |
+| `location_group.create` | `location_group` | 线路组 ID | 创建线路组 | `name`、`description`、`min_tier` |
+| `location_group.update` | `location_group` | 线路组 ID | 修改线路组 | 变化的字段前后值 |
+| `location_group.delete` | `location_group` | 线路组 ID | 删除线路组（ACS-06） | `name`、`min_tier` 前值 |
 
 - **CON-06** 生成兑换码批次时，明文码只在创建批次的响应中返回一次，并同时提供一次性的 CSV 下载；此后只能导出使用记录（spec/12 ORD-14）。
 - **CON-07** 影响预览（`impact`）返回受影响的账号数与节点数，用于 spec/32 UI-03 的“将影响 N 名用户”。切换节点内核时，另外返回与目标内核不兼容的入站。
+  - 账号数按不同账号计，口径见 spec/11 BIL-26。线路组 `min_tier` 变更的受影响账号，是关联该线路组、且 `tier` 在新旧 `min_tier` 之间跨越的套餐的持有者；删除线路组的影响恒为 0（仍被引用时删除返回 409）。
+  - 节点在 M2 才存在：M1 中 `affected_host_count` 为 0，`credential_additions`、`credential_removals` 省略。

@@ -15,7 +15,12 @@
 - **BIL-01** 价格行一旦创建，金额、币种、周期、`period_days` 都不可修改。`on_sale` 只能从 true 改为 false，不能重新开售。改价的做法是停售旧行，再新建一行。
   - 非免费套餐的价格金额必须大于 0。免费套餐不设价格行，由 BIL-15 授予。
   - 数据库触发器用 `IS DISTINCT FROM` 比较上述字段（spec/03）。
+  - 周期必须与套餐类型匹配：`recurring` 套餐只用 `month`、`quarter`、`half_year`、`year`，且 `period_days` 为空；`one_time` 套餐只用 `one_time`，`period_days` 为有效天数，为空表示长期有效（BIL-09）。不匹配返回 400 `invalid_request`（`errors[].code` 为 `not_allowed`，`field` 为 `period` 或 `period_days`）；数据库由插入触发器兜底（spec/03）。
+  - 币种必须等于站点结算货币（CONV-08），否则返回 400 `invalid_request`（`currency`、`not_allowed`）；站点尚未初始化结算货币时返回 409 `invalid_state`。
+  - `on_sale` 套餐至少保留一行在售价格：停售其最后一行在售价格返回 409 `invalid_state`，需先把套餐改为 `hidden` 或 `archived`。改价不受影响：新建价格行时，同一周期的旧行在同一事务中停售。
 - **BIL-02** 购买时把流量、设备上限、限速、重置规则写入权益快照；之后修改套餐不影响已有权益。管理后台提供显式的“应用到现有用户”操作（敏感操作，spec/10 AUTH-19），执行前显示受影响人数。
+  - 作用于该套餐状态为 `active`、`over_quota`、`suspended` 的权益，每个权益追加一条 `admin_adjust` 事件（BIL-03），全部事件共用一条 `reason_texts`（`account_id` 为空，CONV-29）。
+  - 执行记录保存在表 `plan_rollouts`（backlog M1-05），由 worker 分批执行。
 - **BIL-03** 权益只能通过追加 `entitlement_events`、并在同一事务中更新 `entitlements` 来改变，不存在其他修改路径。
   - 每追加一条事件，`entitlements.version` 加 1。
   - 同一事务中写入 `entitlement.changed` 到 outbox（CONV-22）。
@@ -30,6 +35,15 @@
 | `on_sale` | 是 | 是 | 是 | 在 `/v1/plans` 中列出 |
 | `hidden` | 否 | 是（BIL-07） | 否 | 不再列出；已持有的用户可以续费 |
 | `archived` | 否 | 仅当 `allow_legacy_renew` 为真 | 否 | |
+
+- **BIL-26** 套餐的管理约束（管理接口，spec/31）：
+  - 按修改后的状态检查：任何修改之后，状态为 `on_sale` 的非免费套餐必须至少有一行在售价格，否则返回 409 `invalid_state`。这包括改为 `on_sale`、新建时指定 `on_sale`（此时还没有价格行，因此不能直接指定），以及 `on_sale` 的免费套餐把 `kind` 改为非免费。免费套餐的状态不受限制，也没有启用含义（BIL-15）。
+  - 已产生权益的套餐不能改回 `draft`（`draft` 阻止续费，BIL-21），返回 409 `invalid_state`，请改用 `hidden` 或 `archived`。其他状态转换不受限制。
+  - `kind` 只在套餐既没有价格行、也没有权益时可以修改，否则返回 409 `invalid_state`。`kind` 与 `tier` 不匹配（`free` 必须为 0，其他必须大于 0）返回 400 `invalid_request`（`tier`、`out_of_range`）。
+  - 只有既没有价格行、也没有权益、且未被设置 `free_plan_id` 引用的套餐可以删除，否则返回 409 `invalid_state`，请改为 `archived`。价格行不可删除（BIL-01），因此曾经定价的套餐只能归档。
+  - 被 `free_plan_id` 引用的套餐不能修改 `kind`，返回 409 `invalid_state`。
+  - 套餐可以不关联任何线路组。
+  - 影响预览（spec/31 CON-07）中的受影响账号数，是持有该套餐、状态为 `active`、`over_quota`、`suspended` 权益的不同账号数，与 `active_entitlement_count` 的统计口径相同：每个账号至多一个当前权益（BIL-05），这三种状态都是当前权益，因此权益数等于账号数。
 
   报价请求中的 `price_id` 只用来确定“套餐 + 周期”，金额一律由服务端按场景确定：新购、升级、降级使用该周期当前在售的价格行，续费按 BIL-07。
 
@@ -96,6 +110,9 @@
   - 到期扫描覆盖 `active`、`over_quota`、`suspended` 三种状态。
 - **BIL-14** 到期时存在下一段的，下一段在同一事务中变为 `active`（BIL-22）。
 - **BIL-15** 免费套餐（`kind=free`，`tier=0`，`expires_at` 为空）可选，默认不启用。
+  - 一个站点至多一个免费套餐（部分唯一索引，spec/03）；再建一个返回 400 `invalid_request`（`kind`、`taken`）。
+  - 启用与关闭由设置 `free_plan_id` 决定（spec/03 3.6）：为空表示不启用；非空时必须引用这个唯一的免费套餐，否则返回 400 `invalid_request`（`free_plan_id`、`not_allowed`）。批量授予与结束由修改设置（`PATCH /v1/settings`）触发，执行方式（原因来源、分批执行）由 M1-05 与 M1-09 定义。
+  - 免费套餐的 `status` 没有启用含义。无论状态如何，免费套餐都不在客户端 `GET /v1/plans` 中列出，也不能报价购买。
   - 启用时，自动授予所有免费账号，事件 `free_grant`。
   - 免费套餐权益不参与续费与升降级。购买付费套餐一律按新购处理，并在同一事务中结束免费权益。
   - 付费权益到期或结束后，在同一事务中重新授予免费权益。
@@ -147,7 +164,7 @@
 - **ACS-03** 所有下发都幂等；增量结果必须与全量重算一致（性质测试）。每晚执行一次全量对账，并输出差异指标。
 - **ACS-04** 节点可设置流量倍率与限速上限；实际限速取套餐快照与节点上限中的较小值。线路组不设倍率与限速。
 - **ACS-05** 线路组可设置最低等级 `min_tier`；套餐 `tier` 低于该值时，即使关联也不下发。修改 `min_tier` 写入 `location_group.changed`，修改套餐 `tier` 写入 `plan.access_changed`。
-- **ACS-06** 仍被套餐引用的线路组不可删除，删除时返回 409 `invalid_state`。
+- **ACS-06** 仍被套餐引用、或仍有节点成员的线路组不可删除，删除时返回 409 `invalid_state`。
 
 ## 11.8 加购项（M4）
 

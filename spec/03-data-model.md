@@ -63,6 +63,10 @@ erDiagram
 | `site_timezone`、`site_currency` 初始化后只读 | 触发器 `settings_readonly`（CONV-08、CONV-26） |
 | 只追加表不保存原因原文；`admin_adjust` 权益事件必须带原因 | `reason_id` 外键引用 `reason_texts`；CHECK `type <> 'admin_adjust' OR reason_id IS NOT NULL`（CONV-29） |
 | `tier = 0` 只属于免费套餐 | CHECK `(kind = 'free') = (tier = 0)`（spec/11 11.1） |
+| 至多一个免费套餐 | 部分唯一索引 `plans_single_free ON plans (kind) WHERE kind = 'free'`（spec/11 BIL-15） |
+| 免费套餐不设价格行 | 插入触发器 `plan_prices_plan_guard`（spec/11 BIL-01） |
+| 价格行周期与套餐类型匹配 | 插入触发器 `plan_prices_period_guard`：`one_time` 套餐只用 `one_time`，其他套餐不用 `one_time`；`period_days` 只用于 `one_time`（spec/11 BIL-01、BIL-09） |
+| 已有价格行的套餐不能修改 `kind` | 触发器 `plans_kind_guard`（`BEFORE UPDATE OF kind`）。BIL-26 的其余条件（没有权益、未被设置 `free_plan_id` 引用）由应用层检查 |
 | 余额流水的方向由原因决定 | CHECK：`order_payment`、`account_deletion` 为负；`referral`、`admin_adjust` 可正可负；其余为正（spec/12 ORD-16） |
 | 加购报价引用加购价格，其他报价引用套餐价格 | `quotes` 的 CHECK：`(order_type = 'addon') = (addon_price_id IS NOT NULL)`，`price_id` 与 `addon_price_id` 恰有一个非空 |
 | 原路退款不超过累计退款 | CHECK `refunded_original_minor <= refunded_minor` |
@@ -121,4 +125,9 @@ settings 键的读取总则：
 | `roles` 列 | `description`（`text`，可空） | 自定义角色的描述，管理接口 `Role.description`（spec/10 AUTH-22）。内置角色为空，界面按角色名本地化 |
 | 表 | `staff_invitation_roles`（`staff_invitation_id`、`role`、`created_at`，主键为两列） | 一次邀请授予的角色，可以多个（AUTH-22）。`staff_invitation_id` 引用 `staff_invitations(id)` `ON DELETE CASCADE`；`role` 引用 `roles(name)` `ON DELETE CASCADE`，使已接受、已撤销、已过期的邀请不阻止删除角色；仍被 `pending` 邀请引用的角色由应用层拒绝删除（409 `invalid_state`）。纯关联表，没有 `updated_at`（CONV-17） |
 | `staff_invitations` 列 | `role`（废弃） | 由 `staff_invitation_roles` 取代。按 spec/40 DEP-12 分两步：本次迁移去掉 `NOT NULL`，应用不再读写；下一个小版本的迁移删除该列 |
+| `plans` 列 | `version`（`bigint NOT NULL DEFAULT 1`，CHECK `version > 0`） | 套餐 ETag 的来源（spec/31 CON-05、CONV-28）。应用在修改套餐、新建或停售其价格行、添加或移除线路组关联时，在同一事务中加 1（backlog M1-04） |
+| `location_groups` 列 | `version`（`bigint NOT NULL DEFAULT 1`，CHECK `version > 0`） | 线路组 ETag 的来源。应用在修改线路组、增减节点成员时，在同一事务中加 1（`host_count` 因此随版本变化）；节点状态变化不加 1；套餐关联变化只影响派生字段 `plan_ids`，不加 1（CON-05） |
+| `plans` 索引 | `plans_single_free`、`plans_sort`（`sort, id`） | 前者见 3.3；后者用于管理接口 `GET /v1/plans` 的游标分页（按 `sort`、`id` 升序，CONV-11）。该表已有数据，两个索引在迁移 00007 中以 `CREATE INDEX CONCURRENTLY` 建立并标记 `-- +goose NO TRANSACTION`（CONV-21）；版本列（带 CHECK `version > 0`）、`plan_prices_period_guard` 与改写后的 `plans_kind_guard` 在迁移 00006 中 |
+| `settings` 键 | `free_plan_id` | 启用的免费套餐 ID（JSON 字符串），缺键或 `null` 表示不启用（spec/11 BIL-15）；管理接口字段同名。非空时必须引用 `kind = 'free'` 的套餐，写入时校验（`not_allowed`）；被引用的套餐不可删除、不可修改 `kind`（BIL-26）。读取时值异常（不是 UUID 字符串，或所引用的套餐不存在或不是免费套餐）按不启用处理，记 warn 日志只记键名（3.6 读取总则） |
+| `plan_rollouts` 表 | 见 backlog M1-05 | “应用到现有用户”的执行记录（spec/11 BIL-02），随 M1-05 定义 |
 | `notification_outbox` 列 | `staff_invitation_id`（可空） | 邀请邮件的收件人（AUTH-22）：引用 `staff_invitations(id)` `ON DELETE CASCADE`，投递时从 `staff_invitations.email` 读取收件地址，outbox 不保存邮箱（CONV-29）。CHECK `num_nonnulls(account_id, staff_invitation_id) <= 1`。该表已有数据，索引以单独的迁移 `CREATE INDEX CONCURRENTLY` 建立并标记 `-- +goose NO TRANSACTION`（CONV-21）。取出待投递消息的查询改为分别 `LEFT JOIN` `accounts` 与 `staff_invitations`，收件地址取两者之一 |

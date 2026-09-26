@@ -22,6 +22,7 @@
 - **CONV-08** 一个站点只有一种结算货币，初始化后不可更改。
   - 保存在 `settings` 的键 `site_currency`，值为 ISO 4217 字母代码的 JSON 字符串（如 `"CNY"`）。
   - 与 `site_timezone`（CONV-26）由同一个触发器 `settings_readonly` 保证：初始化写入后不得修改或删除。
+  - 站点初始化（backlog M1-09）一次写入 `site_currency` 与 `site_timezone`。`site_currency` 没有隐含的默认值：初始化之前，需要结算货币的操作（新建价格行，以及之后的报价与下单）返回 409 `invalid_state`；管理接口以 `null` 表示尚未初始化。`site_timezone` 缺键时仍按默认值 `Asia/Shanghai` 读取（CONV-26）。
 - **CONV-33** 流量与容量按 1024 进位，使用 IEC 二进制单位：1 KiB = 1024 B，1 MiB = 1024 KiB，1 GiB = 1024 MiB，1 TiB = 1024 GiB。
   - 界面显示、后台配置输入、文案、规格、接口描述与示例一律写 KiB、MiB、GiB、TiB，不用 KB、MB、GB、TB；例如套餐额度“每月 100 GiB”即 107374182400 字节。
   - 文件与请求体大小上限、内存与缓冲区大小同样使用 IEC 单位（如附件“5 MiB”即 5242880 字节），避免与十进制单位混淆。
@@ -175,6 +176,8 @@
 | 主题 | 载荷 |
 |---|---|
 | `credential.changed` | `{schema_version, account_id, credential_id, change}`；`change` 取 `created`、`rotated`、`revoked` |
+| `plan.access_changed` | `{schema_version, plan_id}`；套餐 `tier` 变更、线路组关联或移除时写入（spec/11 ACS-05、BIL-04）；消费方按套餐重算，不依赖载荷中的前后值 |
+| `location_group.changed` | `{schema_version, location_group_id}`；线路组 `min_tier` 变更时写入（ACS-05）；消费方按线路组重算 |
 
   其他主题的载荷在实现对应任务时加入本表。
 
