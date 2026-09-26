@@ -64,7 +64,7 @@
 |---|---|
 | `GET /v1/me/configuration` | 本设备的结构化连接配置（ETag）；未下发凭据时返回状态说明，如 `device_limit_reached` |
 | `GET /v1/me/export-link`、`POST /v1/me/export-link/rotation` | 第三方导入链接；重置（spec/10 AUTH-16） |
-| `GET /v1/me/usage` | 当前周期用量、每日用量、按地区分布 |
+| `GET /v1/me/usage` | 当前周期用量、每日用量、按地区分布；只有没有当前权益时周期为 null，免费套餐权益同样有周期 |
 | `GET /v1/me/events` | SSE 事件：`quota_warning`、`plan_changed`、`profile_updated`、`device_revoked`、`session_revoked`、`announcement` |
 
 **购买与权益**

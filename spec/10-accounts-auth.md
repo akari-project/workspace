@@ -89,15 +89,24 @@
 
 - **AUTH-13** 每台非 web 设备有一条独立的代理凭据；每个账号另有一条供第三方客户端共用的凭据，在账号创建时生成。凭据值加密存储（CONV-19）。凭据的创建、轮换与吊销都写入 `credential.changed` 事件，由权限协调器下发到节点（spec/11 ACS-02）。
 - **AUTH-14** 设备上限：
-  - 只统计未吊销的非 web 设备。付费权益的上限取权益快照中的值；免费账号的上限取设置项 `free_device_limit`（默认 1）；启用了免费套餐的，取免费套餐的值。
-  - 已达上限时，登录照常成功并返回会话，但不为新设备下发代理凭据：`GET /v1/me/configuration` 返回状态 `device_limit_reached`。用户可以在已登录状态下移除其他设备，移除后新设备会自动获得凭据。
-  - 权益变化使已有设备超出上限时，不移除设备记录：按 `last_seen_at` 从近到远，保留上限以内的设备的凭据，其余设备的凭据吊销，直到用户移除设备或上限提高。
-- **AUTH-15** 移除设备：吊销其凭据，写入 `credential.changed` 事件，由权限协调器将其从所有节点移除（spec/11 ACS-02）。
+  - 占用名额的是持有未吊销凭据的非 web 设备；未获得凭据或凭据已被停发的设备不占名额。
+  - 上限取值：有当前权益（`active`、`over_quota`、`suspended`，包括免费套餐权益 `entitlement_status='free'`，BIL-15）时取权益快照中的值。没有任何权益（`entitlement_status='none'`）时取设置项 `free_device_limit`（默认 1），这个值只用于显示（`GET /v1/me` 与设备列表的 `device_limit`），因为此时不下发凭据。
+  - 只有持有状态为 `active` 的权益（含免费套餐权益）时才下发设备凭据；没有权益、或权益为 `over_quota`、`suspended` 时，`credential_status` 为 `entitlement_inactive`，已有的凭据不因此吊销（节点侧的移除由 ACS-01、ACS-02 按权益状态处理，BIL-13）。权益状态优先于凭据：设备已有凭据但权益不是 `active` 时，`credential_status` 同样为 `entitlement_inactive`；`credential_status` 不是 `issued` 时，`GET /v1/me/configuration` 的 `credential` 为 null。
+  - 名额分配由同一个分配过程完成，登录、移除设备与权益变化（M1-05）都调用它，在账号行锁内执行：
+    1. 持有凭据的设备数不超过上限时，只把空余名额分给没有凭据的未吊销非 web 设备，按 `last_seen_at` 从近到远（空值最后，再按 `id`），不吊销任何凭据；新登录的设备因此不会挤掉已持有凭据的设备。
+    2. 持有凭据的设备数超过上限时（例如权益变化使上限降低），不移除设备记录：按 `last_seen_at` 从近到远保留上限以内的设备的凭据，其余设备的凭据吊销，直到用户移除设备或上限提高。
+    3. 不因权益不是 `active` 而吊销凭据；分配过程不涉及共用凭据（AUTH-13）。
+    4. 每次签发与吊销都写 `credential.changed` 事件。
+  - 已达上限时，登录照常成功并返回会话，但不为新设备下发代理凭据：登录响应与 `GET /v1/me/configuration` 的 `credential_status` 为 `device_limit_reached`。用户可以在已登录状态下移除其他设备，移除后按上面第 1 项自动获得凭据。错误码 409 `device_limit_reached`（CONV-16）保留，当前没有接口返回。
+- **AUTH-15** 移除设备：吊销该设备的全部会话与代理凭据，写入 `credential.changed` 事件，由权限协调器将其从所有节点移除（spec/11 ACS-02）；在同一事务中按 AUTH-14 的分配过程把空余名额分给其他设备。web 设备同样可以移除；移除当前设备等同登出，当前设备是 web 设备时响应同时清除认证 Cookie（与登出相同，AUTH-08）。不需要重新验证。
 - **AUTH-16** 重置导出令牌：
   - 需要重新验证（AUTH-23）。
   - 在同一事务中生成新的导出令牌（同时写 `token_hash` 与 `token_enc`，CONV-20），并轮换该账号的共用凭据，写入 `credential.changed` 事件。
   - 旧链接立即失效；已拿到旧配置的第三方客户端，在节点移除旧共用凭据后无法再连接。
   - 用户中心可以随时读取当前导出链接（`GET /v1/me/export-link`，界面默认遮挡）。
+  - 导出令牌为 32 字节随机值的 base64url（无填充）。每个账号一个，在账号创建时与共用凭据在同一事务中生成；缺失时（例如 AUTH-22 第 3 项的重置之后）在首次读取导出链接时补建，重置时同样补建。没有权益的账号同样有导出令牌（spec/23 EXP-06 返回不含节点的配置）。接口中导出链接的 `created_at` 为令牌最近一次生成或重置的时刻（`export_tokens.rotated_at`）。
+  - 导出链接为接口根地址（与 spec/30 API-11 `api_endpoints` 的主地址相同：`ui.portal.api_base_url`，未配置时取用户中心的公开地址去掉末尾的 `/`；公开地址取 `ui.portal.public_url`，未配置时取唯一的 `hosts` 与 `path_prefix`，与找回密码链接的规则相同）加 `/v1/configurations/<令牌>`，不取自请求的 Host。
+  - 读取与重置的响应带 `Cache-Control: private, no-store`；重置不接受 `Idempotency-Key`（CONV-12）；日志不记录链接与令牌（CONV-24）。
 
 ## 10.5 管理员、角色与审计
 

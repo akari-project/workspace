@@ -25,8 +25,8 @@
   - `Profile-Update-Interval`：默认 24 小时。
   - `Cache-Control: private, no-cache`。
   - `ETag`。
-- **EXP-06** 以下账号返回不含节点的配置：免费账号、权益为 `over_quota` 或 `suspended` 的账号、账号状态不是 `active` 的账号。
-  - `Subscription-Userinfo` 的到期时间：有权益时取权益的到期时间；免费账号取上一次付费权益的到期时间，从未购买过的取当前时间。
+- **EXP-06** 以下账号返回不含节点的配置：没有任何权益的账号（`entitlement_status='none'`）、权益为 `over_quota` 或 `suspended` 的账号、账号状态不是 `active` 的账号。持有状态为 `active` 的免费套餐权益（接口中 `entitlement_status='free'`，BIL-15）的账号按该套餐可访问的线路组返回节点（spec/11 ACS-01）。
+  - `Subscription-Userinfo` 的到期时间：有权益时取权益的到期时间，权益没有到期时间（免费套餐权益，`expires_at` 为空）时省略 `expire`；没有权益的账号取上一次付费权益的到期时间，从未购买过的取当前时间。
 - **EXP-07** 同一实例内以 `account_id:format:etag` 做 singleflight。生成的响应体按 ETag 缓存在 Valkey 中：
   - 用派生自主密钥的密钥做 AEAD 加密后存储（CONV-19），TTL 不超过 1 小时；
   - 导出令牌重置或共用凭据轮换时，同步删除缓存。
