@@ -54,7 +54,7 @@
 | `plan.create` | `plan` | 套餐 ID | 创建套餐（M1-04） | 全部字段，含 `location_group_ids` |
 | `plan.update` | `plan` | 套餐 ID | 修改套餐 | 变化的字段前后值 |
 | `plan.delete` | `plan` | 套餐 ID | 删除套餐（spec/11 BIL-26） | `name`、`kind`、`tier` 前值 |
-| `plan_price.create` | `plan_price` | 价格行 ID | 新建价格行（BIL-01） | `plan_id`、`period`、`period_days`、`amount_minor`、`currency`；同一周期旧行被停售时另有 `discontinued_price_id`（只写这一条审计） |
+| `plan_price.create` | `plan_price` | 价格行 ID | 新建价格行（BIL-01） | `plan_id`、`period`、`period_days`、`amount_minor`、`currency`、`discontinued_price_id`（同一周期旧行被停售时为其 ID，否则为 `null`；只写这一条审计） |
 | `plan_price.discontinue` | `plan_price` | 价格行 ID | 停售价格行 | `plan_id`、`period`、`amount_minor` |
 | `plan_location_group.create` | `plan` | 套餐 ID | 为套餐添加线路组（BIL-04） | `location_group_id` |
 | `plan_location_group.delete` | `plan` | 套餐 ID | 从套餐移除线路组（敏感操作，带 `reason_id`） | `location_group_id` |
