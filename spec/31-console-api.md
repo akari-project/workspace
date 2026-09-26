@@ -58,7 +58,9 @@
 | `plan_price.discontinue` | `plan_price` | 价格行 ID | 停售价格行 | `plan_id`、`period`、`amount_minor` |
 | `plan_location_group.create` | `plan` | 套餐 ID | 为套餐添加线路组（BIL-04） | `location_group_id` |
 | `plan_location_group.delete` | `plan` | 套餐 ID | 从套餐移除线路组（敏感操作，带 `reason_id`） | `location_group_id` |
-| `plan_rollout.create` | `plan` | 套餐 ID | 应用到现有用户（BIL-02，M1-05；敏感操作，带 `reason_id`） | `plan_rollout_id`、`fields`、`affected_account_count` |
+| `plan_rollout.create` | `plan` | 套餐 ID | 应用到现有用户（BIL-02，M1-05；敏感操作，带 `reason_id`） | `plan_rollout_id`、`fields`、`target_values`（冻结的目标值）、`affected_account_count`。免费套餐的 `free_grant`、`free_end` 记录不写本条，由 `setting.update` 记录 |
+| `entitlement_adjustment.create` | `account` | 账号 ID | 调整权益（spec/11 11.6：`admin_adjust`、`suspend`、`resume`，包括授予新权益；带 `reason_id`） | `entitlement_id`、`event_id`、`event_type`、变化的字段前后值；授予新权益时另有 `plan_id`，同时结束免费权益时另有 `ended_entitlement_id` |
+| `setting.update` | `setting` | 空 | 修改系统设置（M1-09）；修改 `free_plan_id` 时为敏感操作，带 `reason_id`（spec/11 BIL-15） | 变化的键前后值（`_enc` 键只记录“已修改”）；修改 `free_plan_id` 时另有 `plan_rollout_id` 与 `plan_rollout_kind` |
 | `location_group.create` | `location_group` | 线路组 ID | 创建线路组 | `name`、`description`、`min_tier` |
 | `location_group.update` | `location_group` | 线路组 ID | 修改线路组 | 变化的字段前后值 |
 | `location_group.delete` | `location_group` | 线路组 ID | 删除线路组（ACS-06） | `name`、`min_tier` 前值 |

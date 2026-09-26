@@ -178,6 +178,7 @@
 | `credential.changed` | `{schema_version, account_id, credential_id, change}`；`change` 取 `created`、`rotated`、`revoked` |
 | `plan.access_changed` | `{schema_version, plan_id}`；套餐 `tier` 变更、线路组关联或移除时写入（spec/11 ACS-05、BIL-04）；消费方按套餐重算，不依赖载荷中的前后值 |
 | `location_group.changed` | `{schema_version, location_group_id}`；线路组 `min_tier` 变更时写入（ACS-05）；消费方按线路组重算 |
+| `entitlement.changed` | `{schema_version, account_id, entitlement_id, event_id, type, version}`；每条权益事件一条（spec/11 BIL-03、11.6），`event_id` 为 `entitlement_events.id`，`type` 为事件类型，`version` 为该行写入后的版本；消费方按账号重算，不依赖载荷中的前后值 |
 
   其他主题的载荷在实现对应任务时加入本表。
 
