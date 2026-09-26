@@ -17,7 +17,7 @@
 | 等级 | 套餐的 `tier`，用于判断升级或降级 | `plans.tier` | `tier` | `tier` | — |
 | 权益 | 账号拥有的套餐实例 | `entitlements` | `me/entitlements` | `accounts/{id}/entitlements` | — |
 | 本段 | 当前权益从 `starts_at` 到 `expires_at` 的区间；续费延长本段（spec/11 BIL-20） | `entitlements.starts_at`、`expires_at` | — | — | — |
-| 本段实付 | 为本段支付的价值：现金、余额抵扣与带入的剩余价值之和，不含优惠 | `entitlements.paid_minor` | — | — | — |
+| 本段实付 | 为本段支付的价值：现金、余额抵扣与带入的剩余价值中抵扣新价格的部分之和，不含优惠；由各笔（分笔，各覆盖自己的时间区间）组成 | `entitlements.paid_minor` | — | — | — |
 | 下一段 | 排在当前权益之后的权益（到期后生效的降级） | `entitlements.status='scheduled'` | `me/entitlements/next` | — | — |
 | 权益事件 | 权益的只追加变更记录 | `entitlement_events` | — | 时间线 | — |
 | 锁定价格 | 续费时使用的价格；只对应一个周期 | `entitlements.locked_price_id` | `locked_price` | — | — |

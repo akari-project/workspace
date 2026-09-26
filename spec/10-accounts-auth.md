@@ -187,7 +187,7 @@
   - 缺少、过期、签名无效或会话链不符，一律返回 401 `mfa_required`（与 AUTH-20 登录流程的 `mfa_required` 不同）：`methods` 只列出 step-up 可用的方式（M1 为 `["totp"]`），不含 `recovery_code`，不附 `challenge_id`。管理后台完成 step-up 后重试原请求（spec/32 UI-09）。
   - 校验顺序：认证 → 权限（403）→ 参数、原因与 `If-Match` 是否存在（400、428）→ `Mfa-Assertion`（401）→ 业务处理（含 ETag 不一致的 409 `conflict` 与状态检查）。返回 401 之前不产生副作用（CONV-12）。
 
-  敏感操作包括：手动标记支付、余额调整、退款、切换节点内核、修改支付配置、应用到现有用户、从套餐移除线路组、吊销节点密钥、管理员与角色变更、重置用户密码、管理员删除账号、导出审计日志或用户数据（`/v1/audit-logs/exports`、`/v1/accounts/{id}/data-exports`）。执行者还必须拥有该操作对应的权限（AUTH-17）。
+  敏感操作包括：手动标记支付、余额调整、退款、切换节点内核、修改支付配置、应用到现有用户、从套餐移除线路组、吊销节点密钥、管理员与角色变更、重置用户密码、管理员删除账号、导出审计日志或用户数据（`/v1/audit-logs/exports`、`/v1/accounts/{id}/data-exports`）、修改免费套餐设置 `free_plan_id`（只在该字段变化时敏感，契约以 `x-sensitive-fields` 标注，spec/11 BIL-15）。执行者还必须拥有该操作对应的权限（AUTH-17）。
 - **AUTH-25** 账号暂停（管理员操作）：
   - 吊销该账号的全部会话与代理凭据，登录返回 403 `account_suspended`，写入 `account.status_changed` 事件。
   - 暂停期间权益照常计时，不冻结。
